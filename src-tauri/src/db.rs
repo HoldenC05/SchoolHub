@@ -128,7 +128,7 @@ pub fn init(path: &Path) -> rusqlite::Result<Db> {
     Ok(Arc::new(Mutex::new(conn)))
 }
 
-fn migrate(conn: &Connection) -> rusqlite::Result<()> {
+pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS _migrations (
             version INTEGER PRIMARY KEY,
@@ -335,4 +335,141 @@ pub fn delete(conn: &Connection, table: &str, id: i64) -> Result<bool, String> {
     let sql = format!("DELETE FROM {table} WHERE id = ?1");
     let changed = conn.execute(&sql, [id]).map_err(|e| e.to_string())?;
     Ok(changed > 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn test_conn() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+        migrate(&conn).unwrap();
+        conn
+    }
+
+    #[test]
+    fn migrations_create_all_tables() {
+        let conn = test_conn();
+        let expected = [
+            "courses",
+            "activities",
+            "assignments",
+            "meetings",
+            "projects",
+            "notes",
+            "ideas",
+            "tags",
+            "sync_state",
+            "calendar_links",
+            "calendar_events",
+        ];
+        let mut stmt = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+            .unwrap();
+        let tables: Vec<String> = stmt
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        for t in expected {
+            assert!(tables.iter().any(|x| x == t), "missing table {t}");
+        }
+    }
+
+    #[test]
+    fn crud_round_trip() {
+        let conn = test_conn();
+        let created = insert(
+            &conn,
+            "courses",
+            &json!({ "name": "Biology 101", "term": "Fall 2026", "teacher": "Dr. Eames" }),
+        )
+        .unwrap();
+        let id = created["id"].as_i64().unwrap();
+
+        let fetched = get_one(&conn, "courses", id).unwrap().unwrap();
+        assert_eq!(fetched["name"], json!("Biology 101"));
+        assert_eq!(fetched["teacher"], json!("Dr. Eames"));
+
+        let updated = update(&conn, "courses", id, &json!({ "teacher": "Dr. Renner" }))
+            .unwrap()
+            .unwrap();
+        assert_eq!(updated["teacher"], json!("Dr. Renner"));
+        assert_eq!(updated["name"], json!("Biology 101"));
+
+        let rows = list_all(&conn, "courses").unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["id"].as_i64(), Some(id));
+
+        assert!(delete(&conn, "courses", id).unwrap());
+        assert!(get_one(&conn, "courses", id).unwrap().is_none());
+    }
+
+    #[test]
+    fn insert_rejects_unknown_fields() {
+        let conn = test_conn();
+        let err = insert(&conn, "courses", &json!({ "bogus": 1 })).unwrap_err();
+        assert!(err.contains("no valid fields"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn update_missing_id_returns_none() {
+        let conn = test_conn();
+        assert!(update(&conn, "courses", 999, &json!({ "name": "x" })).unwrap().is_none());
+    }
+
+    #[test]
+    fn delete_missing_returns_false() {
+        let conn = test_conn();
+        assert!(!delete(&conn, "courses", 999).unwrap());
+    }
+
+    #[test]
+    fn cascade_deletes_assignments() {
+        let conn = test_conn();
+        let course = insert(&conn, "courses", &json!({ "name": "Calc" })).unwrap();
+        let course_id = course["id"].as_i64().unwrap();
+        insert(
+            &conn,
+            "assignments",
+            &json!({ "course_id": course_id, "title": "Problem set 1" }),
+        )
+        .unwrap();
+        assert_eq!(list_all(&conn, "assignments").unwrap().len(), 1);
+
+        delete(&conn, "courses", course_id).unwrap();
+        assert_eq!(list_all(&conn, "assignments").unwrap().len(), 0);
+    }
+
+    #[test]
+    fn json_sql_round_trip() {
+        assert_eq!(sql_to_json(json_to_sql(&json!(null))), json!(null));
+        assert_eq!(sql_to_json(json_to_sql(&json!(true))), json!(1));
+        assert_eq!(sql_to_json(json_to_sql(&json!(42))), json!(42));
+        assert_eq!(sql_to_json(json_to_sql(&json!("hi"))), json!("hi"));
+    }
+
+    #[test]
+    fn calendar_links_upsert_deduplicates() {
+        let conn = test_conn();
+        conn.execute(
+            "INSERT INTO calendar_links (entity_type, entity_id, remote_uid, remote_href, calendar_href) \
+             VALUES ('assignment', 1, 'assignment-1', '/cal/assignment-1.ics', '/cal/')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO calendar_links (entity_type, entity_id, remote_uid, remote_href, calendar_href) \
+             VALUES ('assignment', 1, 'assignment-1b', '/cal/assignment-1b.ics', '/cal/') \
+             ON CONFLICT(entity_type, entity_id) DO UPDATE SET remote_uid = excluded.remote_uid",
+            [],
+        )
+        .unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM calendar_links", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+    }
 }

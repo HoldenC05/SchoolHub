@@ -36,6 +36,23 @@ npm run tauri dev
 
 The phone PWA needs the frontend built: `npm run build` (served from `dist/`).
 
+## Milestone verification
+
+Run this after every milestone to make sure nothing broke:
+
+```sh
+npm run verify
+```
+
+It checks, in order:
+
+1. **TypeScript typecheck** — `tsc --noEmit`
+2. **Frontend build** — Vite production build
+3. **Rust tests** — `cargo test`: unit tests for the ICS parser/builder, date helpers, DB migrations & CRUD, and axum API integration tests (auth, CRUD cycle, malformed input)
+4. **Live API smoke test** — against the running server on port 8787: health, 401 without a token, every resource listable, and a create → delete round-trip
+
+For step 4 the server must be running (`npm run tauri dev`); if it isn't, the script prints a note and skips that step.
+
 ## Phone setup
 
 1. Install Tailscale on the Mac and phone (free), sign in to both.

@@ -3227,6 +3227,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-opener",
  "tokio",
+ "tower",
  "tower-http",
  "uuid",
 ]

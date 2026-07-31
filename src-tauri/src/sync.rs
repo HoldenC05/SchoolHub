@@ -220,3 +220,14 @@ pub fn run_sync(dir: &std::path::Path, db: &db::Db) -> SyncReport {
     }
     report
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn event_href_has_slash_between_calendar_and_uid() {
+        assert_eq!(event_href("/cal/ABC/", "assignment-1"), "/cal/ABC/assignment-1.ics");
+        assert_eq!(event_href("/cal/ABC", "assignment-1"), "/cal/ABC/assignment-1.ics");
+    }
+}

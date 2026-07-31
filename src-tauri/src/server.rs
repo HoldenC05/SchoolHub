@@ -129,20 +129,25 @@ async fn remove(State(state): State<AppState>, Path((table, id)): Path<(String, 
     }
 }
 
-pub async fn serve(db: db::Db, token: String, dist: PathBuf) {
-    let state = AppState { db, token };
-
+pub fn api_router(state: AppState) -> Router {
     let api = Router::new()
         .route("/api/{table}", get(list).post(create))
         .route("/api/{table}/{id}", get(get_one).patch(update).delete(remove))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth))
         .with_state(state);
 
+    Router::new()
+        .route("/api/health", get(health))
+        .merge(api)
+}
+
+pub async fn serve(db: db::Db, token: String, dist: PathBuf) {
+    let state = AppState { db, token };
+
     let index = dist.join("index.html");
     let app = Router::new()
-        .route("/api/health", get(health))
         .fallback_service(ServeDir::new(&dist).not_found_service(ServeFile::new(index)))
-        .merge(api)
+        .merge(api_router(state))
         .layer(CorsLayer::permissive());
 
     let listener = match tokio::net::TcpListener::bind(format!("0.0.0.0:{PORT}")).await {
@@ -155,5 +160,154 @@ pub async fn serve(db: db::Db, token: String, dist: PathBuf) {
     eprintln!("[school-hub] local server listening on http://127.0.0.1:{PORT}");
     if let Err(e) = axum::serve(listener, app).await {
         eprintln!("[school-hub] server error: {e}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use std::sync::{Arc, Mutex};
+    use tower::ServiceExt;
+
+    fn test_app(token: &str) -> Router {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        {
+            let _ = conn.pragma_update(None, "foreign_keys", "ON");
+        }
+        db::migrate(&conn).unwrap();
+        let state = AppState {
+            db: Arc::new(Mutex::new(conn)),
+            token: token.to_string(),
+        };
+        api_router(state)
+    }
+
+    async fn send(
+        app: &Router,
+        method: &str,
+        uri: &str,
+        token: &str,
+        body: Option<Value>,
+    ) -> (StatusCode, Value) {
+        let mut builder = Request::builder().method(method).uri(uri);
+        builder = builder.header(AUTHORIZATION, format!("Bearer {token}"));
+        let body = match body {
+            Some(v) => {
+                builder = builder.header("content-type", "application/json");
+                Body::from(serde_json::to_vec(&v).unwrap())
+            }
+            None => Body::empty(),
+        };
+        let resp = app
+            .clone()
+            .oneshot(builder.body(body).unwrap())
+            .await
+            .unwrap();
+        let status = resp.status();
+        let bytes = axum::body::to_bytes(resp.into_body(), 2 * 1024 * 1024)
+            .await
+            .unwrap();
+        let value = if bytes.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null)
+        };
+        (status, value)
+    }
+
+    #[tokio::test]
+    async fn health_needs_no_auth() {
+        let app = test_app("secret-token");
+        let (status, body) = send(&app, "GET", "/api/health", "", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["service"], json!("school-hub"));
+    }
+
+    #[tokio::test]
+    async fn api_requires_bearer_token() {
+        let app = test_app("secret-token");
+        let (status, body) = send(&app, "GET", "/api/courses", "", None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert!(body["error"].as_str().unwrap().contains("Unauthorized"));
+
+        let (status, _) = send(&app, "GET", "/api/courses", "wrong-token", None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+        let (status, body) = send(&app, "GET", "/api/courses", "secret-token", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, json!([]));
+    }
+
+    #[tokio::test]
+    async fn unknown_table_returns_404() {
+        let app = test_app("secret-token");
+        let (status, _) = send(&app, "GET", "/api/nope", "secret-token", None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn full_crud_cycle() {
+        let app = test_app("secret-token");
+
+        let (status, created) = send(
+            &app,
+            "POST",
+            "/api/courses",
+            "secret-token",
+            Some(json!({ "name": "History 201", "term": "Fall 2026" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+        let id = created["id"].as_i64().expect("created course has an id");
+
+        let (status, rows) = send(&app, "GET", "/api/courses", "secret-token", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(rows.as_array().unwrap().len(), 1);
+        assert_eq!(rows[0]["name"], json!("History 201"));
+
+        let (status, updated) = send(
+            &app,
+            "PATCH",
+            &format!("/api/courses/{id}"),
+            "secret-token",
+            Some(json!({ "teacher": "Prof. Brooks" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(updated["teacher"], json!("Prof. Brooks"));
+
+        let (status, one) = send(&app, "GET", &format!("/api/courses/{id}"), "secret-token", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(one["name"], json!("History 201"));
+
+        let (status, _) = send(&app, "DELETE", &format!("/api/courses/{id}"), "secret-token", None).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        let (status, _) = send(&app, "GET", &format!("/api/courses/{id}"), "secret-token", None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn malformed_json_rejected() {
+        let app = test_app("secret-token");
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/courses")
+            .header(AUTHORIZATION, "Bearer secret-token")
+            .header("content-type", "application/json")
+            .body(Body::from("not json"))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn calendar_events_listable() {
+        let app = test_app("secret-token");
+        let (status, body) = send(&app, "GET", "/api/calendar_events", "secret-token", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, json!([]));
     }
 }

@@ -459,14 +459,31 @@ pub fn due_to_ics(due: &str) -> Option<(String, String, bool)> {
         let (ny, nm, nd) = next_day(y, mo, d);
         return Some((format!("{y}{mo}{d}"), format!("{ny}{nm}{nd}"), true));
     }
-    if digits.len() >= 14 {
-        let (y, mo, d, h, mi) = (&digits[0..4], &digits[4..6], &digits[6..8], &digits[8..10], &digits[10..12]);
-        let (ny, nm, nd, nh, nmi) = add_hour(y, mo, d, h, mi);
-        let start = format!("{y}{mo}{d}T{h}{mi}00");
-        let end = format!("{ny}{nm}{nd}T{nh}{nmi}00");
-        return Some((start, end, false));
-    }
-    None
+    let (y, mo, d, h, mi, se) = if digits.len() >= 14 {
+        (
+            &digits[0..4],
+            &digits[4..6],
+            &digits[6..8],
+            &digits[8..10],
+            &digits[10..12],
+            &digits[12..14],
+        )
+    } else if digits.len() >= 12 {
+        (
+            &digits[0..4],
+            &digits[4..6],
+            &digits[6..8],
+            &digits[8..10],
+            &digits[10..12],
+            "00",
+        )
+    } else {
+        return None;
+    };
+    let (ny, nm, nd, nh, nmi) = add_hour(y, mo, d, h, mi);
+    let start = format!("{y}{mo}{d}T{h}{mi}{se}");
+    let end = format!("{ny}{nm}{nd}T{nh}{nmi}{se}");
+    Some((start, end, false))
 }
 
 fn add_hour(
@@ -528,4 +545,185 @@ pub fn build_event_ics(
         title = escape_ics(title),
         desc = escape_ics(description),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_timestamped_event() {
+        let ics = "\
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Apple Inc.//Mac OS X//EN
+BEGIN:VEVENT
+UID:test-123@example.com
+DTSTAMP:20260914T100000Z
+DTSTART:20260914T143000Z
+DTEND:20260914T160000Z
+SUMMARY:Team meeting
+LOCATION:Room 4A
+DESCRIPTION:Discuss the project plan
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR";
+        let events = parse_ics(ics);
+        assert_eq!(events.len(), 1);
+        let ev = &events[0];
+        assert_eq!(ev.uid, "test-123@example.com");
+        assert_eq!(ev.summary.as_deref(), Some("Team meeting"));
+        assert_eq!(ev.location.as_deref(), Some("Room 4A"));
+        assert_eq!(ev.description.as_deref(), Some("Discuss the project plan"));
+        assert_eq!(ev.status.as_deref(), Some("CONFIRMED"));
+        assert_eq!(ev.starts_at.as_deref(), Some("2026-09-14T14:30:00Z"));
+        assert_eq!(ev.ends_at.as_deref(), Some("2026-09-14T16:00:00Z"));
+    }
+
+    #[test]
+    fn parses_all_day_event() {
+        let ics = "\
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:allday-1
+DTSTART;VALUE=DATE:20260914
+DTEND;VALUE=DATE:20260915
+SUMMARY:Birthday
+END:VEVENT
+END:VCALENDAR";
+        let events = parse_ics(ics);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].starts_at.as_deref(), Some("2026-09-14"));
+        assert_eq!(events[0].ends_at.as_deref(), Some("2026-09-15"));
+    }
+
+    #[test]
+    fn unfolds_lines_and_skips_valarm() {
+        let ics = "\
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:folded-1
+SUMMARY:This is a very long summary that 
+ keeps going onto the next line
+DESCRIPTION:real description
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:REMINDER TEXT
+TRIGGER:-PT15M
+END:VALARM
+END:VEVENT
+END:VCALENDAR";
+        let events = parse_ics(ics);
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            events[0].summary.as_deref(),
+            Some("This is a very long summary that keeps going onto the next line")
+        );
+        assert_eq!(events[0].description.as_deref(), Some("real description"));
+    }
+
+    #[test]
+    fn parses_multiple_events() {
+        let ics = "\
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:a
+SUMMARY:First
+END:VEVENT
+BEGIN:VEVENT
+UID:b
+SUMMARY:Second
+END:VEVENT
+END:VCALENDAR";
+        let events = parse_ics(ics);
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].summary.as_deref(), Some("First"));
+        assert_eq!(events[1].summary.as_deref(), Some("Second"));
+    }
+
+    #[test]
+    fn builds_all_day_ics() {
+        let ics = build_event_ics("evt-7", "Final; Exam (calc)", "read ch. 4,5", "20260914", "20260915", true);
+        assert!(ics.starts_with("BEGIN:VCALENDAR"));
+        assert!(ics.trim_end().ends_with("END:VCALENDAR"));
+        assert!(ics.contains("UID:evt-7@schoolhub"));
+        assert!(ics.contains("DTSTART;VALUE=DATE:20260914"));
+        assert!(ics.contains("DTEND;VALUE=DATE:20260915"));
+        assert!(ics.contains("SUMMARY:Final\\; Exam (calc)"));
+        assert!(ics.contains("DESCRIPTION:read ch. 4\\,5"));
+        assert!(ics.contains("TRIGGER:-PT12H"));
+    }
+
+    #[test]
+    fn builds_datetime_ics_without_value_date() {
+        let ics = build_event_ics("evt-1", "Homework", "", "20260914T235900", "20260915T005900", false);
+        assert!(ics.contains("DTSTART:20260914T235900"));
+        assert!(ics.contains("DTEND:20260915T005900"));
+        assert!(!ics.contains("VALUE=DATE"));
+    }
+
+    #[test]
+    fn due_date_all_day() {
+        assert_eq!(due_to_ics("2026-09-15"), Some(("20260915".into(), "20260916".into(), true)));
+        assert_eq!(due_to_ics("20260915"), Some(("20260915".into(), "20260916".into(), true)));
+    }
+
+    #[test]
+    fn due_date_minute_precision() {
+        let want = ("20260915T235900".into(), "20260916T005900".into(), false);
+        assert_eq!(due_to_ics("2026-09-15T23:59"), Some(want.clone()));
+        assert_eq!(due_to_ics("2026-09-15T23:59:00"), Some(want.clone()));
+        assert_eq!(due_to_ics("2026-09-15 23:59"), Some(want.clone()));
+        assert_eq!(due_to_ics("2026-09-15T23:59:00Z"), Some(want));
+    }
+
+    #[test]
+    fn due_leap_year() {
+        assert_eq!(due_to_ics("2024-02-28"), Some(("20240228".into(), "20240229".into(), true)));
+        assert_eq!(due_to_ics("2023-02-28"), Some(("20230228".into(), "20230301".into(), true)));
+        assert_eq!(due_to_ics("2023-12-31"), Some(("20231231".into(), "20240101".into(), true)));
+    }
+
+    #[test]
+    fn due_midnight_rolls_day() {
+        assert_eq!(
+            due_to_ics("2026-09-15T23:30"),
+            Some(("20260915T233000".into(), "20260916T003000".into(), false))
+        );
+    }
+
+    #[test]
+    fn due_unparseable_returns_none() {
+        assert_eq!(due_to_ics(""), None);
+        assert_eq!(due_to_ics("next week"), None);
+        assert_eq!(due_to_ics("2026"), None);
+    }
+
+    #[test]
+    fn now_iso_utc_is_formatted() {
+        let s = now_iso_utc();
+        assert_eq!(s.len(), 20);
+        assert!(s.ends_with('Z'));
+        assert_eq!(&s[4..5], "-");
+        assert_eq!(&s[7..8], "-");
+        assert_eq!(&s[10..11], "T");
+        assert_eq!(&s[13..14], ":");
+        assert_eq!(&s[16..17], ":");
+        assert!(s[0..4].parse::<u32>().is_ok());
+    }
+
+    #[test]
+    fn ics_range_formats_utc_dates() {
+        let (start, end) = ics_range(0, 0);
+        assert_eq!(start.len(), 16);
+        assert_eq!(end, start);
+        assert!(start.ends_with("T000000Z"));
+        assert!(start[0..4].parse::<u32>().is_ok());
+    }
+
+    #[test]
+    fn civil_epoch_is_1970_01_01() {
+        let (y, m, d, _, _, _) = days_from_civil_to_ymd(0);
+        assert_eq!((y, m, d), (1970, 1, 1));
+    }
 }
