@@ -23,6 +23,8 @@ Your all-in-one school command center for macOS, with phone access.
 - **API:** axum HTTP server on port 8787 serving both the REST API and the PWA build
 - **Pairing:** per-device bearer token, generated once and stored in the macOS Keychain
 
+**Phone access note:** the phone PWA talks to the server running on your Mac, so it needs the Mac to be on, awake, and on Tailscale. M7 (cloud sync) will decouple the phone from the Mac's state.
+
 ## Development
 
 ```sh
@@ -46,3 +48,4 @@ The phone PWA needs the frontend built: `npm run build` (served from `dist/`).
 - [ ] M4 — Outlook (Microsoft Graph) sync
 - [ ] M5 — Blackboard connector
 - [ ] M6 — Mobile PWA polish (quick-add, notifications)
+- [ ] M7 — Cloud sync (Supabase): phone works even when your Mac is closed
