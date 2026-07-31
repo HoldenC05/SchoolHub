@@ -2,11 +2,32 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import QRCode from "qrcode";
 import { isTauri } from "../lib/api";
-import { Card } from "../components/ui";
+import { Button, Card, Field, SelectInput, TextInput } from "../components/ui";
 
 interface TailscaleInfo {
   ip: string;
   hostname: string;
+}
+
+interface CalStatus {
+  email: string;
+  connected: boolean;
+  calendar_name: string;
+  calendar_href: string;
+  last_sync_at: string | null;
+  last_sync_error: string | null;
+}
+
+interface CalListResult {
+  calendars: { href: string; name: string | null }[];
+}
+
+interface CalSyncResult {
+  pushed: number;
+  pulled: number;
+  events_removed: number;
+  error: string | null;
+  last_sync_at: string | null;
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -34,6 +55,218 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+function CalendarSection() {
+  const [status, setStatus] = useState<CalStatus | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [calendars, setCalendars] = useState<{ href: string; name: string | null }[] | null>(null);
+  const [selectedHref, setSelectedHref] = useState("");
+  const [syncResult, setSyncResult] = useState<CalSyncResult | null>(null);
+
+  const refreshStatus = () => {
+    if (!isTauri()) return;
+    invoke<CalStatus>("cal_sync_status")
+      .then(setStatus)
+      .catch((e) => console.error("cal status failed", e));
+  };
+
+  useEffect(() => {
+    refreshStatus();
+  }, []);
+
+  const connect = async () => {
+    setBusy(true);
+    setError(null);
+    setSyncResult(null);
+    try {
+      const res = await invoke<CalListResult>("cal_connect", { email, password });
+      setCalendars(res.calendars);
+      if (res.calendars.length > 0) {
+        setSelectedHref(res.calendars[0].href);
+      }
+      refreshStatus();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const selectCalendar = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const picked = calendars?.find((c) => c.href === selectedHref);
+      await invoke("cal_select", { href: selectedHref, name: picked?.name ?? null });
+      setCalendars(null);
+      refreshStatus();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const syncNow = async () => {
+    setBusy(true);
+    setError(null);
+    setSyncResult(null);
+    try {
+      const res = await invoke<CalSyncResult>("cal_sync_now");
+      setSyncResult(res);
+      refreshStatus();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disconnect = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await invoke("cal_disconnect");
+      setStatus({ email: "", connected: false, calendar_name: "", calendar_href: "", last_sync_at: null, last_sync_error: null });
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!isTauri()) {
+    return (
+      <Card className="flex items-start gap-3">
+        <span className="text-2xl">🍎</span>
+        <div className="min-w-0 flex-1">
+          <p className="font-medium text-slate-100">Apple Calendar (iCloud)</p>
+          <p className="text-sm text-slate-500">
+            Connected through your Mac. Events synced from iCloud appear in Today and Planner.
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
+  if (status?.connected) {
+    return (
+      <Card className="flex items-start gap-3">
+        <span className="text-2xl">🍎</span>
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="font-medium text-slate-100">Apple Calendar (iCloud)</p>
+            <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-300">
+              Connected
+            </span>
+          </div>
+          <p className="text-sm text-slate-400">
+            {status.email} →{" "}
+            <span className="text-slate-200">{status.calendar_name || status.calendar_href}</span>
+          </p>
+          {status.last_sync_at && (
+            <p className="text-xs text-slate-500">Last synced {status.last_sync_at}</p>
+          )}
+          {status.last_sync_error && (
+            <p className="text-xs text-rose-400">Last sync failed: {status.last_sync_error}</p>
+          )}
+          {syncResult && (
+            <p className="text-xs text-slate-400">
+              Sync complete — {syncResult.pushed} pushed, {syncResult.pulled} pulled
+              {syncResult.events_removed > 0 ? `, ${syncResult.events_removed} removed` : ""}.
+              {syncResult.error ? ` Error: ${syncResult.error}` : ""}
+            </p>
+          )}
+          {error && <p className="text-xs text-rose-400">{error}</p>}
+          <div className="flex gap-2">
+            <Button onClick={syncNow} disabled={busy} className="disabled:opacity-50">
+              {busy ? "Syncing…" : "Sync now"}
+            </Button>
+            <Button variant="danger" onClick={disconnect} disabled={busy} className="disabled:opacity-50">
+              Disconnect
+            </Button>
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="flex items-start gap-3">
+      <span className="text-2xl">🍎</span>
+      <div className="min-w-0 flex-1 space-y-3">
+        <div>
+          <p className="font-medium text-slate-100">Apple Calendar (iCloud)</p>
+          <p className="text-sm text-slate-500">
+            Two-way sync via CalDAV. Pushes your assignments with reminders, pulls your calendar into
+            Today and Planner. Use an app-specific password from{" "}
+            <a
+              className="text-indigo-300 underline"
+              href="https://appleid.apple.com"
+              target="_blank"
+              rel="noreferrer"
+            >
+              appleid.apple.com
+            </a>
+            .
+          </p>
+        </div>
+
+        {calendars === null ? (
+          <div className="flex flex-col gap-2">
+            <Field label="Apple ID email">
+              <TextInput value={email} onChange={setEmail} placeholder="you@icloud.com" />
+            </Field>
+            <Field label="App-specific password">
+              <TextInput value={password} onChange={setPassword} placeholder="xxxx-xxxx-xxxx-xxxx" />
+            </Field>
+            {error && <p className="text-xs text-rose-400">{error}</p>}
+            <div>
+              <Button onClick={connect} disabled={busy || !email || !password} className="disabled:opacity-50">
+                {busy ? "Connecting…" : "Connect"}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {calendars.length === 0 ? (
+              <p className="text-sm text-rose-400">
+                No calendars found on this account. Create one at icloud.com/calendar, then try again.
+              </p>
+            ) : (
+              <>
+                <Field label="Choose a calendar to sync with">
+                  <SelectInput
+                    value={selectedHref}
+                    onChange={setSelectedHref}
+                    options={calendars.map((c) => ({
+                      value: c.href,
+                      label: c.name || c.href,
+                    }))}
+                  />
+                </Field>
+                <div>
+                  <Button onClick={selectCalendar} disabled={busy || !selectedHref} className="disabled:opacity-50">
+                    {busy ? "Saving…" : "Use this calendar"}
+                  </Button>
+                  <button
+                    className="ml-3 text-sm text-slate-400 underline"
+                    onClick={() => setCalendars(null)}
+                  >
+                    Back
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 export function IntegrationsPage() {
   const [token, setToken] = useState<string | null>(null);
   const [tail, setTail] = useState<TailscaleInfo | null>(null);
@@ -50,9 +283,7 @@ export function IntegrationsPage() {
       .catch((e) => setTailError(String(e)));
   }, []);
 
-  const phoneUrl = tail
-    ? `http://${tail.hostname || tail.ip}:8787`
-    : null;
+  const phoneUrl = tail ? `http://${tail.hostname || tail.ip}:8787` : null;
 
   useEffect(() => {
     if (!phoneUrl || !token) return;
@@ -67,12 +298,6 @@ export function IntegrationsPage() {
   }, [phoneUrl, token]);
 
   const integrations = [
-    {
-      icon: "🍎",
-      name: "Apple Calendar (iCloud)",
-      desc: "Two-way sync via CalDAV. Reads your events, pushes assignments with reminders.",
-      status: "Planned",
-    },
     {
       icon: "📧",
       name: "Outlook / Microsoft",
@@ -161,6 +386,7 @@ export function IntegrationsPage() {
           Connected services
         </h2>
         <div className="space-y-2">
+          <CalendarSection />
           {integrations.map((i) => (
             <Card key={i.name} className="flex items-start gap-3">
               <span className="text-2xl">{i.icon}</span>

@@ -93,6 +93,28 @@ const MIGRATIONS: &[&str] = &[
         state_json TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );",
+    "CREATE TABLE IF NOT EXISTS calendar_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT NOT NULL,
+        entity_id INTEGER NOT NULL,
+        remote_uid TEXT NOT NULL,
+        remote_href TEXT NOT NULL,
+        calendar_href TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(entity_type, entity_id)
+    );",
+    "CREATE TABLE IF NOT EXISTS calendar_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        remote_uid TEXT NOT NULL UNIQUE,
+        summary TEXT,
+        starts_at TEXT,
+        ends_at TEXT,
+        location TEXT,
+        source TEXT NOT NULL DEFAULT 'caldav',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );",
 ];
 
 pub fn init(path: &Path) -> rusqlite::Result<Db> {
@@ -171,6 +193,7 @@ pub const TABLES: &[(&str, &[&str])] = &[
     ),
     ("ideas", &["title", "body", "done"]),
     ("tags", &["name"]),
+    ("calendar_events", &[]),
 ];
 
 pub fn table_columns(table: &str) -> Option<&'static [&'static str]> {

@@ -1,12 +1,12 @@
 import { useData } from "../lib/useData";
-import type { Assignment, Meeting, Project } from "../lib/types";
+import type { Assignment, CalendarEvent, Meeting, Project } from "../lib/types";
 import { KIND_LABELS } from "../lib/types";
 import { Card, EmptyState } from "../components/ui";
 
 interface TimelineItem {
   when: string | null;
   title: string;
-  kind: "assignment" | "meeting" | "project";
+  kind: "assignment" | "meeting" | "project" | "event";
   label?: string;
 }
 
@@ -21,6 +21,7 @@ export function PlannerPage() {
   const assignments = useData<Assignment[]>("/api/assignments");
   const meetings = useData<Meeting[]>("/api/meetings");
   const projects = useData<Project[]>("/api/projects");
+  const events = useData<CalendarEvent[]>("/api/calendar_events");
 
   const items: TimelineItem[] = [
     ...(assignments.data || []).map((a) => ({
@@ -39,6 +40,13 @@ export function PlannerPage() {
       title: `${p.title} (project)`,
       kind: "project" as const,
     })),
+    ...(events.data || [])
+      .filter((e) => e.summary)
+      .map((e) => ({
+        when: e.starts_at,
+        title: e.summary as string,
+        kind: "event" as const,
+      })),
   ].sort((a, b) => (a.when || "9999").localeCompare(b.when || "9999"));
 
   const upcoming = items.filter((i) => !i.when || new Date(i.when) >= new Date()).slice(0, 40);
@@ -47,9 +55,7 @@ export function PlannerPage() {
     <div className="mx-auto max-w-3xl space-y-6">
       <header>
         <h1 className="text-2xl font-bold text-slate-100">Planner</h1>
-        <p className="text-sm text-slate-400">
-          Everything on your horizon — calendar sync lands in a later milestone
-        </p>
+        <p className="text-sm text-slate-400">Everything on your horizon</p>
       </header>
 
       {upcoming.length === 0 ? (
@@ -60,7 +66,13 @@ export function PlannerPage() {
             <Card key={i} className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <span className="text-lg">
-                  {item.kind === "meeting" ? "🤝" : item.kind === "project" ? "🚀" : "✏️"}
+                  {item.kind === "meeting"
+                    ? "🤝"
+                    : item.kind === "project"
+                      ? "🚀"
+                      : item.kind === "event"
+                        ? "📅"
+                        : "✏️"}
                 </span>
                 <div>
                   <p className="font-medium text-slate-100">{item.title}</p>

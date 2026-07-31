@@ -1,5 +1,5 @@
 import { useData } from "../lib/useData";
-import type { Assignment, Meeting } from "../lib/types";
+import type { Assignment, CalendarEvent, Meeting } from "../lib/types";
 import { KIND_LABELS } from "../lib/types";
 import { Card, EmptyState, Pill } from "../components/ui";
 
@@ -19,11 +19,16 @@ function fmtDate(s: string | null): string {
 export function TodayPage() {
   const assignments = useData<Assignment[]>("/api/assignments");
   const meetings = useData<Meeting[]>("/api/meetings");
+  const events = useData<CalendarEvent[]>("/api/calendar_events");
 
   const due = (assignments.data || []).filter((a) => a.status !== "done" && a.status !== "graded");
   const upcoming = (meetings.data || []).filter(
     (m) => !m.starts_at || new Date(m.starts_at) >= new Date(),
   );
+  const calendarEvents = (events.data || [])
+    .filter((e) => e.summary && (!e.starts_at || new Date(e.starts_at) >= new Date()))
+    .sort((a, b) => (a.starts_at || "9999").localeCompare(b.starts_at || "9999"))
+    .slice(0, 20);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -88,6 +93,27 @@ export function TodayPage() {
           </div>
         )}
       </section>
+
+      {calendarEvents.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-slate-500">
+            From your calendar
+          </h2>
+          <div className="space-y-2">
+            {calendarEvents.map((e) => (
+              <Card key={e.id} className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium text-slate-100">{e.summary}</p>
+                  <p className="text-xs text-slate-500">
+                    {fmtDate(e.starts_at)}
+                    {e.location ? ` · ${e.location}` : ""}
+                  </p>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

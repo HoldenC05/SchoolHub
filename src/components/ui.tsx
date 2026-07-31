@@ -15,12 +15,14 @@ export function Button({
   variant = "primary",
   className = "",
   type = "button",
+  disabled = false,
 }: {
   children: ReactNode;
   onClick?: () => void;
   variant?: "primary" | "ghost" | "danger";
   className?: string;
   type?: "button" | "submit";
+  disabled?: boolean;
 }) {
   const styles = {
     primary:
@@ -32,7 +34,8 @@ export function Button({
     <button
       type={type}
       onClick={onClick}
-      className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${styles} ${className}`}
+      disabled={disabled}
+      className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${styles} ${className}`}
     >
       {children}
     </button>

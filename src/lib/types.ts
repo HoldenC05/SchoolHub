@@ -87,6 +87,18 @@ export interface Tag {
   name: string;
 }
 
+export interface CalendarEvent {
+  id: number;
+  remote_uid: string;
+  summary: string | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  location: string | null;
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export const KIND_LABELS: Record<AssignmentKind, string> = {
   homework: "Homework",
   test: "Test",
