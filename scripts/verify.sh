@@ -24,10 +24,7 @@ if ! curl -s -m 3 "$BASE/api/health" >/dev/null; then
   exit 0
 fi
 
-TOKEN="$(security find-generic-password -s com.holden.schoolhub -a pairing-token -w 2>/dev/null || true)"
-if [ -z "$TOKEN" ]; then
-  TOKEN="$(cat "$DATA_DIR/pairing-token" 2>/dev/null || true)"
-fi
+TOKEN="$(cat "$DATA_DIR/pairing-token" 2>/dev/null || true)"
 if [ -z "$TOKEN" ]; then
   echo "WARN: no pairing token found — skipping authenticated checks."
   exit 0

@@ -1,17 +1,34 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-const SERVICE: &str = "com.holden.schoolhub";
-const USER: &str = "caldav-app-password";
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CalendarSel {
+    pub href: String,
+    pub name: String,
+    #[serde(default)]
+    pub color: Option<String>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CalConfig {
     pub email: String,
+    #[serde(default)]
     pub calendar_href: String,
+    #[serde(default)]
     pub calendar_name: String,
+    #[serde(default)]
+    pub calendars: Vec<CalendarSel>,
+    #[serde(default)]
+    pub push_calendar: Option<CalendarSel>,
     pub enabled: bool,
     pub last_sync_at: Option<String>,
     pub last_sync_error: Option<String>,
+}
+
+impl CalConfig {
+    pub fn is_connected(&self) -> bool {
+        !self.calendars.is_empty()
+    }
 }
 
 fn config_path(dir: &Path) -> PathBuf {
@@ -22,11 +39,43 @@ fn password_file_path(dir: &Path) -> PathBuf {
     dir.join("caldav-app-password")
 }
 
+fn is_special_collection_href(href: &str) -> bool {
+    let h = href.trim_end_matches('/');
+    h.ends_with("/calendars")
+        || h.ends_with("/inbox")
+        || h.ends_with("/outbox")
+        || h.ends_with("/notification")
+        || h.ends_with("/dropbox")
+}
+
 pub fn load(dir: &Path) -> CalConfig {
-    std::fs::read_to_string(config_path(dir))
+    let mut cfg: CalConfig = std::fs::read_to_string(config_path(dir))
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if cfg.calendars.is_empty() && !cfg.calendar_href.is_empty() {
+        let sel = CalendarSel {
+            href: cfg.calendar_href.clone(),
+            name: cfg.calendar_name.clone(),
+            color: None,
+        };
+        cfg.calendars.push(sel.clone());
+        if cfg.push_calendar.is_none() {
+            cfg.push_calendar = Some(sel);
+        }
+        let _ = save(dir, &cfg);
+    }
+    let before = cfg.calendars.len();
+    cfg.calendars.retain(|c| !is_special_collection_href(&c.href));
+    if let Some(push) = cfg.push_calendar.as_ref() {
+        if is_special_collection_href(&push.href) {
+            cfg.push_calendar = None;
+        }
+    }
+    if cfg.calendars.len() != before {
+        let _ = save(dir, &cfg);
+    }
+    cfg
 }
 
 pub fn save(dir: &Path, cfg: &CalConfig) -> Result<(), String> {
@@ -56,31 +105,14 @@ fn write_password_file(dir: &Path, password: &str) {
 }
 
 pub fn get_app_password(dir: &Path) -> Option<String> {
-    if let Ok(entry) = keyring::Entry::new(SERVICE, USER) {
-        if let Ok(existing) = entry.get_password() {
-            if !existing.is_empty() {
-                return Some(existing);
-            }
-        }
-    }
     read_password_file(dir)
 }
 
 pub fn set_app_password(dir: &Path, password: &str) -> Result<(), String> {
-    match keyring::Entry::new(SERVICE, USER) {
-        Ok(entry) => {
-            if entry.set_password(password).is_err() {
-                write_password_file(dir, password);
-            }
-        }
-        Err(_) => write_password_file(dir, password),
-    }
+    write_password_file(dir, password);
     Ok(())
 }
 
 pub fn clear_app_password(dir: &Path) {
-    if let Ok(entry) = keyring::Entry::new(SERVICE, USER) {
-        let _ = entry.delete_credential();
-    }
     let _ = std::fs::remove_file(password_file_path(dir));
 }

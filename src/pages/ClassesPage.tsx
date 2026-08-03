@@ -98,7 +98,7 @@ function CourseModal({
   );
 }
 
-export function ClassesPage() {
+export function ClassesPage({ onOpenCourse }: { onOpenCourse: (id: number) => void }) {
   const { data: courses, refresh, loading } = useData<Course[]>("/api/courses");
   const { remove } = useDelete("/api/courses");
   const [modalOpen, setModalOpen] = useState(false);
@@ -122,16 +122,18 @@ export function ClassesPage() {
         <div className="grid gap-3 sm:grid-cols-2">
           {courses.map((c) => (
             <Card key={c.id} className="group flex items-start gap-3">
-              <span
-                className="mt-0.5 h-3 w-3 shrink-0 rounded-full"
-                style={{ backgroundColor: c.color || "#334155" }}
-              />
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-slate-100">{c.name}</p>
-                <p className="text-sm text-slate-500">
-                  {[c.teacher, c.term].filter(Boolean).join(" · ") || "No details yet"}
-                </p>
-              </div>
+              <button onClick={() => onOpenCourse(c.id)} className="flex min-w-0 flex-1 items-start gap-3 text-left">
+                <span
+                  className="mt-0.5 h-3 w-3 shrink-0 rounded-full"
+                  style={{ backgroundColor: c.color || "#334155" }}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium text-slate-100">{c.name}</span>
+                  <span className="block text-sm text-slate-500">
+                    {[c.teacher, c.term].filter(Boolean).join(" · ") || "No details yet"}
+                  </span>
+                </span>
+              </button>
               <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
                 <IconButton
                   title="Edit"

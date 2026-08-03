@@ -8,12 +8,14 @@ import type { Nav } from "./lib/nav";
 import { Sidebar } from "./components/Sidebar";
 import { PairingScreen } from "./components/PairingScreen";
 import { TodayPage } from "./pages/TodayPage";
+import { CalendarPage } from "./pages/CalendarPage";
 import { PlannerPage } from "./pages/PlannerPage";
 import { ClassesPage } from "./pages/ClassesPage";
 import { HomeworkTestsPage } from "./pages/HomeworkTestsPage";
 import { NotesPage, IdeasPage } from "./pages/IdeasNotesPage";
 import { ActivitiesPage } from "./pages/ActivitiesPage";
 import { ActivityPage } from "./pages/ActivityPage";
+import { CoursePage } from "./pages/CoursePage";
 import { IntegrationsPage } from "./pages/IntegrationsPage";
 
 function App() {
@@ -77,14 +79,18 @@ function App() {
 
   let page: ReactNode;
   if (nav === "today") page = <TodayPage />;
+  else if (nav === "calendar") page = <CalendarPage />;
   else if (nav === "planner") page = <PlannerPage />;
-  else if (nav === "classes") page = <ClassesPage />;
+  else if (nav === "classes")
+    page = <ClassesPage onOpenCourse={(id) => navigate({ kind: "course", id })} />;
   else if (nav === "homework") page = <HomeworkTestsPage />;
   else if (nav === "notes") page = <NotesPage />;
   else if (nav === "ideas") page = <IdeasPage />;
   else if (nav === "activities")
     page = <ActivitiesPage onOpenActivity={(id) => navigate({ kind: "activity", id })} />;
   else if (nav === "integrations") page = <IntegrationsPage />;
+  else if (typeof nav === "object" && nav.kind === "course")
+    page = <CoursePage courseId={nav.id} />;
   else page = <ActivityPage activityId={nav.id} />;
 
   return (

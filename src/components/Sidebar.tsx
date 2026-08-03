@@ -3,7 +3,8 @@ import type { Nav } from "../lib/nav";
 
 const MAIN_ITEMS: { nav: Nav; label: string; icon: string }[] = [
   { nav: "today", label: "Today", icon: "📅" },
-  { nav: "planner", label: "Planner", icon: "🗓️" },
+  { nav: "calendar", label: "Calendar", icon: "🗓️" },
+  { nav: "planner", label: "Planner", icon: "🧭" },
   { nav: "classes", label: "Classes", icon: "📚" },
   { nav: "homework", label: "Homework / Tests", icon: "✏️" },
   { nav: "notes", label: "Notes", icon: "📝" },
@@ -30,21 +31,26 @@ export function Sidebar({
 
       <nav className="flex-1 overflow-y-auto px-3 pb-4">
         <ul className="space-y-1">
-          {MAIN_ITEMS.map(({ nav: target, label, icon }) => (
-            <li key={label}>
-              <button
-                onClick={() => onNavigate(target)}
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  nav === target
-                    ? "bg-indigo-500/15 text-indigo-300"
-                    : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-                }`}
-              >
-                <span>{icon}</span>
-                {label}
-              </button>
-            </li>
-          ))}
+          {MAIN_ITEMS.map(({ nav: target, label, icon }) => {
+            const active =
+              nav === target ||
+              (target === "classes" && typeof nav === "object" && nav.kind === "course");
+            return (
+              <li key={label}>
+                <button
+                  onClick={() => onNavigate(target)}
+                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    active
+                      ? "bg-indigo-500/15 text-indigo-300"
+                      : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                  }`}
+                >
+                  <span>{icon}</span>
+                  {label}
+                </button>
+              </li>
+            );
+          })}
         </ul>
 
         <div className="mt-6 mb-2 flex items-center justify-between px-3">

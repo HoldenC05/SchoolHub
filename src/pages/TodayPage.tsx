@@ -16,6 +16,51 @@ function fmtDate(s: string | null): string {
   });
 }
 
+function fmtDateOnly(s: string | null): string {
+  if (!s) return "No date";
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return s;
+  return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+
+function isAllDay(s: string | null): boolean {
+  return !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
+function fmtTime(s: string | null): string {
+  if (!s) return "";
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return s;
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+function sameLocalDay(s: string | null, offsetDays: number): boolean {
+  if (!s) return false;
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return false;
+  const t = new Date();
+  t.setDate(t.getDate() + offsetDays);
+  return d.getFullYear() === t.getFullYear() && d.getMonth() === t.getMonth() && d.getDate() === t.getDate();
+}
+
+function EventRow({ e }: { e: CalendarEvent }) {
+  const allDay = isAllDay(e.starts_at);
+  return (
+    <Card className="flex items-center justify-between gap-3">
+      <div>
+        <p className="font-medium text-slate-100">{e.summary}</p>
+        <p className="text-xs text-slate-500">
+          {allDay ? fmtDateOnly(e.starts_at) : fmtDate(e.starts_at)}
+          {e.location ? ` · ${e.location}` : ""}
+        </p>
+      </div>
+      <span className="shrink-0 text-xs font-medium text-slate-400">
+        {allDay ? "All day" : fmtTime(e.starts_at)}
+      </span>
+    </Card>
+  );
+}
+
 export function TodayPage() {
   const assignments = useData<Assignment[]>("/api/assignments");
   const meetings = useData<Meeting[]>("/api/meetings");
@@ -25,10 +70,13 @@ export function TodayPage() {
   const upcoming = (meetings.data || []).filter(
     (m) => !m.starts_at || new Date(m.starts_at) >= new Date(),
   );
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
   const calendarEvents = (events.data || [])
-    .filter((e) => e.summary && (!e.starts_at || new Date(e.starts_at) >= new Date()))
-    .sort((a, b) => (a.starts_at || "9999").localeCompare(b.starts_at || "9999"))
-    .slice(0, 20);
+    .filter((e) => e.summary && (!e.starts_at || new Date(e.starts_at) >= todayStart))
+    .sort((a, b) => (a.starts_at || "9999").localeCompare(b.starts_at || "9999"));
+  const todayEvents = calendarEvents.filter((e) => sameLocalDay(e.starts_at, 0));
+  const tomorrowEvents = calendarEvents.filter((e) => sameLocalDay(e.starts_at, 1));
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -94,22 +142,27 @@ export function TodayPage() {
         )}
       </section>
 
-      {calendarEvents.length > 0 && (
+      {todayEvents.length > 0 && (
         <section>
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-slate-500">
-            From your calendar
+            Today's calendar
           </h2>
           <div className="space-y-2">
-            {calendarEvents.map((e) => (
-              <Card key={e.id} className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="font-medium text-slate-100">{e.summary}</p>
-                  <p className="text-xs text-slate-500">
-                    {fmtDate(e.starts_at)}
-                    {e.location ? ` · ${e.location}` : ""}
-                  </p>
-                </div>
-              </Card>
+            {todayEvents.map((e) => (
+              <EventRow key={e.id} e={e} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {tomorrowEvents.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-slate-500">
+            Next up tomorrow
+          </h2>
+          <div className="space-y-2">
+            {tomorrowEvents.map((e) => (
+              <EventRow key={e.id} e={e} />
             ))}
           </div>
         </section>

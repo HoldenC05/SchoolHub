@@ -2,24 +2,29 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import QRCode from "qrcode";
 import { isTauri } from "../lib/api";
-import { Button, Card, Field, SelectInput, TextInput } from "../components/ui";
+import { Button, Card, Field, TextInput } from "../components/ui";
 
 interface TailscaleInfo {
   ip: string;
   hostname: string;
 }
 
+interface CalSel {
+  href: string;
+  name: string;
+}
+
 interface CalStatus {
   email: string;
   connected: boolean;
-  calendar_name: string;
-  calendar_href: string;
+  calendars: CalSel[];
+  push_calendar: CalSel | null;
   last_sync_at: string | null;
   last_sync_error: string | null;
 }
 
 interface CalListResult {
-  calendars: { href: string; name: string | null }[];
+  calendars: CalSel[];
 }
 
 interface CalSyncResult {
@@ -55,14 +60,81 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+function CalendarPicker({
+  list,
+  checked,
+  pushHref,
+  busy,
+  onToggle,
+  onTogglePush,
+  onSave,
+  onCancel,
+}: {
+  list: CalSel[];
+  checked: Set<string>;
+  pushHref: string | null;
+  busy: boolean;
+  onToggle: (href: string) => void;
+  onTogglePush: (href: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        {list.map((c) => (
+          <label
+            key={c.href}
+            className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 ${
+              checked.has(c.href)
+                ? "border-indigo-500/50 bg-indigo-500/10"
+                : "border-slate-800 bg-slate-950/50"
+            }`}
+          >
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-indigo-500"
+              checked={checked.has(c.href)}
+              onChange={() => onToggle(c.href)}
+            />
+            <span className="min-w-0 flex-1 truncate text-sm text-slate-100">
+              {c.name || c.href}
+            </span>
+            <span className="flex items-center gap-1.5 text-xs text-slate-400">
+              <input
+                type="radio"
+                name="push-target"
+                className="h-4 w-4 accent-emerald-500"
+                checked={pushHref === c.href}
+                disabled={!checked.has(c.href)}
+                onChange={() => onTogglePush(c.href)}
+              />
+              push assignments
+            </span>
+          </label>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <Button onClick={onSave} disabled={busy || checked.size === 0} className="disabled:opacity-50">
+          {busy ? "Saving…" : "Use selected calendars"}
+        </Button>
+        <button className="text-sm text-slate-400 underline" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function CalendarSection() {
   const [status, setStatus] = useState<CalStatus | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [calendars, setCalendars] = useState<{ href: string; name: string | null }[] | null>(null);
-  const [selectedHref, setSelectedHref] = useState("");
+  const [list, setList] = useState<CalSel[] | null>(null);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [pushHref, setPushHref] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<CalSyncResult | null>(null);
 
   const refreshStatus = () => {
@@ -76,16 +148,19 @@ function CalendarSection() {
     refreshStatus();
   }, []);
 
+  const beginPicker = (calendars: CalSel[]) => {
+    setList(calendars);
+    setChecked(new Set(calendars.map((c) => c.href)));
+    setPushHref(status?.push_calendar?.href ?? calendars[0]?.href ?? null);
+  };
+
   const connect = async () => {
     setBusy(true);
     setError(null);
     setSyncResult(null);
     try {
       const res = await invoke<CalListResult>("cal_connect", { email, password });
-      setCalendars(res.calendars);
-      if (res.calendars.length > 0) {
-        setSelectedHref(res.calendars[0].href);
-      }
+      beginPicker(res.calendars);
       refreshStatus();
     } catch (e) {
       setError(String(e));
@@ -94,13 +169,28 @@ function CalendarSection() {
     }
   };
 
-  const selectCalendar = async () => {
+  const changeCalendars = async () => {
     setBusy(true);
     setError(null);
     try {
-      const picked = calendars?.find((c) => c.href === selectedHref);
-      await invoke("cal_select", { href: selectedHref, name: picked?.name ?? null });
-      setCalendars(null);
+      const res = await invoke<CalListResult>("cal_list");
+      beginPicker(res.calendars);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveSelection = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const payload = (list || [])
+        .filter((c) => checked.has(c.href))
+        .map((c) => ({ href: c.href, name: c.name, push: c.href === pushHref }));
+      await invoke("cal_select", { calendars: payload });
+      setList(null);
       refreshStatus();
     } catch (e) {
       setError(String(e));
@@ -129,13 +219,36 @@ function CalendarSection() {
     setError(null);
     try {
       await invoke("cal_disconnect");
-      setStatus({ email: "", connected: false, calendar_name: "", calendar_href: "", last_sync_at: null, last_sync_error: null });
+      setStatus({
+        email: "",
+        connected: false,
+        calendars: [],
+        push_calendar: null,
+        last_sync_at: null,
+        last_sync_error: null,
+      });
     } catch (e) {
       setError(String(e));
     } finally {
       setBusy(false);
     }
   };
+
+  const toggle = (href: string) => {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(href)) {
+        next.delete(href);
+        setPushHref((p) => (p === href ? null : p));
+      } else {
+        next.add(href);
+        setPushHref((p) => p ?? href);
+      }
+      return next;
+    });
+  };
+
+  const togglePush = (href: string) => setPushHref(href);
 
   if (!isTauri()) {
     return (
@@ -151,7 +264,39 @@ function CalendarSection() {
     );
   }
 
-  if (status?.connected) {
+  if (list !== null) {
+    return (
+      <Card className="flex items-start gap-3">
+        <span className="text-2xl">🍎</span>
+        <div className="min-w-0 flex-1 space-y-3">
+          <div>
+            <p className="font-medium text-slate-100">Apple Calendar (iCloud)</p>
+            <p className="text-sm text-slate-500">
+              Check the calendars to pull events from, then mark which one should receive your
+              assignments (push).
+            </p>
+          </div>
+          <CalendarPicker
+            list={list}
+            checked={checked}
+            pushHref={pushHref}
+            busy={busy}
+            onToggle={toggle}
+            onTogglePush={togglePush}
+            onSave={saveSelection}
+            onCancel={() => {
+              setList(null);
+              setError(null);
+            }}
+          />
+          {error && <p className="text-xs text-rose-400">{error}</p>}
+        </div>
+      </Card>
+    );
+  }
+
+  if (status?.connected && (status.calendars.length > 0 || status.push_calendar)) {
+    const names = status.calendars.map((c) => c.name || c.href);
     return (
       <Card className="flex items-start gap-3">
         <span className="text-2xl">🍎</span>
@@ -162,10 +307,21 @@ function CalendarSection() {
               Connected
             </span>
           </div>
-          <p className="text-sm text-slate-400">
-            {status.email} →{" "}
-            <span className="text-slate-200">{status.calendar_name || status.calendar_href}</span>
+          <p className="text-sm text-slate-400">{status.email}</p>
+          <p className="text-xs text-slate-400">
+            Pulling from{" "}
+            <span className="text-slate-200">{names.length} calendar{names.length === 1 ? "" : "s"}</span>
+            {names.length > 0 && <span className="text-slate-500"> — {names.join(", ")}</span>}
           </p>
+          {status.push_calendar && (
+            <p className="text-xs text-slate-400">
+              Assignments push to{" "}
+              <span className="text-slate-200">{status.push_calendar.name || status.push_calendar.href}</span>
+            </p>
+          )}
+          {!status.push_calendar && (
+            <p className="text-xs text-amber-300/90">No push target — assignments aren't sent to iCloud.</p>
+          )}
           {status.last_sync_at && (
             <p className="text-xs text-slate-500">Last synced {status.last_sync_at}</p>
           )}
@@ -180,9 +336,12 @@ function CalendarSection() {
             </p>
           )}
           {error && <p className="text-xs text-rose-400">{error}</p>}
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button onClick={syncNow} disabled={busy} className="disabled:opacity-50">
               {busy ? "Syncing…" : "Sync now"}
+            </Button>
+            <Button variant="ghost" onClick={changeCalendars} disabled={busy} className="disabled:opacity-50">
+              Change calendars
             </Button>
             <Button variant="danger" onClick={disconnect} disabled={busy} className="disabled:opacity-50">
               Disconnect
@@ -200,8 +359,8 @@ function CalendarSection() {
         <div>
           <p className="font-medium text-slate-100">Apple Calendar (iCloud)</p>
           <p className="text-sm text-slate-500">
-            Two-way sync via CalDAV. Pushes your assignments with reminders, pulls your calendar into
-            Today and Planner. Use an app-specific password from{" "}
+            Pull events from as many calendars as you like, and pick one to push assignments into.
+            Use an app-specific password from{" "}
             <a
               className="text-indigo-300 underline"
               href="https://appleid.apple.com"
@@ -213,55 +372,20 @@ function CalendarSection() {
             .
           </p>
         </div>
-
-        {calendars === null ? (
-          <div className="flex flex-col gap-2">
-            <Field label="Apple ID email">
-              <TextInput value={email} onChange={setEmail} placeholder="you@icloud.com" />
-            </Field>
-            <Field label="App-specific password">
-              <TextInput value={password} onChange={setPassword} placeholder="xxxx-xxxx-xxxx-xxxx" />
-            </Field>
-            {error && <p className="text-xs text-rose-400">{error}</p>}
-            <div>
-              <Button onClick={connect} disabled={busy || !email || !password} className="disabled:opacity-50">
-                {busy ? "Connecting…" : "Connect"}
-              </Button>
-            </div>
+        <div className="flex flex-col gap-2">
+          <Field label="Apple ID email">
+            <TextInput value={email} onChange={setEmail} placeholder="you@icloud.com" />
+          </Field>
+          <Field label="App-specific password">
+            <TextInput value={password} onChange={setPassword} placeholder="xxxx-xxxx-xxxx-xxxx" />
+          </Field>
+          {error && <p className="text-xs text-rose-400">{error}</p>}
+          <div>
+            <Button onClick={connect} disabled={busy || !email || !password} className="disabled:opacity-50">
+              {busy ? "Connecting…" : "Connect"}
+            </Button>
           </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {calendars.length === 0 ? (
-              <p className="text-sm text-rose-400">
-                No calendars found on this account. Create one at icloud.com/calendar, then try again.
-              </p>
-            ) : (
-              <>
-                <Field label="Choose a calendar to sync with">
-                  <SelectInput
-                    value={selectedHref}
-                    onChange={setSelectedHref}
-                    options={calendars.map((c) => ({
-                      value: c.href,
-                      label: c.name || c.href,
-                    }))}
-                  />
-                </Field>
-                <div>
-                  <Button onClick={selectCalendar} disabled={busy || !selectedHref} className="disabled:opacity-50">
-                    {busy ? "Saving…" : "Use this calendar"}
-                  </Button>
-                  <button
-                    className="ml-3 text-sm text-slate-400 underline"
-                    onClick={() => setCalendars(null)}
-                  >
-                    Back
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        )}
+        </div>
       </div>
     </Card>
   );

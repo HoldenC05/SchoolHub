@@ -115,6 +115,73 @@ const MIGRATIONS: &[&str] = &[
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );",
+    "CREATE TABLE calendar_links_v2 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT NOT NULL,
+        entity_id INTEGER NOT NULL,
+        remote_uid TEXT NOT NULL,
+        remote_href TEXT NOT NULL,
+        calendar_href TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(entity_type, entity_id, calendar_href)
+    );
+    INSERT INTO calendar_links_v2 (entity_type, entity_id, remote_uid, remote_href, calendar_href, created_at, updated_at)
+        SELECT entity_type, entity_id, remote_uid, remote_href, calendar_href, created_at, updated_at FROM calendar_links;
+    DROP TABLE calendar_links;
+    ALTER TABLE calendar_links_v2 RENAME TO calendar_links;",
+    "CREATE TABLE calendar_events_v2 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        remote_uid TEXT NOT NULL,
+        summary TEXT,
+        starts_at TEXT,
+        ends_at TEXT,
+        location TEXT,
+        source TEXT NOT NULL DEFAULT 'caldav',
+        calendar_href TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(remote_uid, calendar_href)
+    );
+    INSERT INTO calendar_events_v2 (id, remote_uid, summary, starts_at, ends_at, location, source, created_at, updated_at)
+        SELECT id, remote_uid, summary, starts_at, ends_at, location, source, created_at, updated_at FROM calendar_events;
+    DROP TABLE calendar_events;
+    ALTER TABLE calendar_events_v2 RENAME TO calendar_events;",
+    "CREATE TABLE calendar_events_v3 (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        remote_uid TEXT NOT NULL,
+        summary TEXT,
+        starts_at TEXT,
+        ends_at TEXT,
+        location TEXT,
+        description TEXT,
+        source TEXT NOT NULL DEFAULT 'caldav',
+        calendar_href TEXT,
+        remote_href TEXT,
+        rrule TEXT,
+        recurrence_id TEXT NOT NULL DEFAULT '',
+        exdates TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(remote_uid, calendar_href, recurrence_id)
+    );
+    INSERT INTO calendar_events_v3 (id, remote_uid, summary, starts_at, ends_at, location, description, source, calendar_href, remote_href, rrule, recurrence_id, exdates, created_at, updated_at)
+        SELECT id, remote_uid, summary, starts_at, ends_at, location, NULL, source, calendar_href, NULL, NULL, '', NULL, created_at, updated_at FROM calendar_events;
+    DROP TABLE calendar_events;
+    ALTER TABLE calendar_events_v3 RENAME TO calendar_events;",
+    "ALTER TABLE meetings ADD COLUMN course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE;",
+    "CREATE TABLE files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        filename TEXT,
+        mime TEXT,
+        size INTEGER,
+        data TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );",
 ];
 
 pub fn init(path: &Path) -> rusqlite::Result<Db> {
@@ -181,7 +248,7 @@ pub const TABLES: &[(&str, &[&str])] = &[
     ),
     (
         "meetings",
-        &["activity_id", "title", "starts_at", "ends_at", "agenda", "notes"],
+        &["activity_id", "course_id", "title", "starts_at", "ends_at", "agenda", "notes"],
     ),
     (
         "projects",
@@ -190,6 +257,10 @@ pub const TABLES: &[(&str, &[&str])] = &[
     (
         "notes",
         &["entity_type", "entity_id", "title", "body_md"],
+    ),
+    (
+        "files",
+        &["course_id", "title", "filename", "mime", "size", "data", "notes"],
     ),
     ("ideas", &["title", "body", "done"]),
     ("tags", &["name"]),
@@ -364,6 +435,7 @@ mod tests {
             "sync_state",
             "calendar_links",
             "calendar_events",
+            "files",
         ];
         let mut stmt = conn
             .prepare("SELECT name FROM sqlite_master WHERE type='table'")
@@ -462,8 +534,8 @@ mod tests {
         .unwrap();
         conn.execute(
             "INSERT INTO calendar_links (entity_type, entity_id, remote_uid, remote_href, calendar_href) \
-             VALUES ('assignment', 1, 'assignment-1b', '/cal/assignment-1b.ics', '/cal/') \
-             ON CONFLICT(entity_type, entity_id) DO UPDATE SET remote_uid = excluded.remote_uid",
+             VALUES ('assignment', 1, 'assignment-1', '/cal/assignment-1.ics', '/cal/') \
+             ON CONFLICT(entity_type, entity_id, calendar_href) DO UPDATE SET remote_uid = excluded.remote_uid",
             [],
         )
         .unwrap();

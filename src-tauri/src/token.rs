@@ -1,8 +1,5 @@
 use std::path::PathBuf;
 
-const SERVICE: &str = "com.holden.schoolhub";
-const USER: &str = "pairing-token";
-
 fn file_path(data_dir: &PathBuf) -> PathBuf {
     data_dir.join("pairing-token")
 }
@@ -25,24 +22,10 @@ fn write_to_file(data_dir: &PathBuf, token: &str) {
 }
 
 pub fn get_or_create_token(data_dir: &PathBuf) -> String {
-    if let Ok(entry) = keyring::Entry::new(SERVICE, USER) {
-        if let Ok(existing) = entry.get_password() {
-            if !existing.is_empty() {
-                return existing;
-            }
-        }
-    }
     if let Some(existing) = read_from_file(data_dir) {
         return existing;
     }
     let token = format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple());
-    match keyring::Entry::new(SERVICE, USER) {
-        Ok(entry) => {
-            if entry.set_password(&token).is_err() {
-                write_to_file(data_dir, &token);
-            }
-        }
-        Err(_) => write_to_file(data_dir, &token),
-    }
+    write_to_file(data_dir, &token);
     token
 }

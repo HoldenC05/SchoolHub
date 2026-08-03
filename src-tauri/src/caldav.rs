@@ -11,6 +11,7 @@ const BASE: &str = "https://caldav.icloud.com";
 pub struct CalInfo {
     pub href: String,
     pub display_name: Option<String>,
+    pub color: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -22,6 +23,10 @@ pub struct IcsEvent {
     pub starts_at: Option<String>,
     pub ends_at: Option<String>,
     pub status: Option<String>,
+    pub rrule: Option<String>,
+    pub recurrence_id: Option<String>,
+    pub exdates: Vec<String>,
+    pub href: Option<String>,
 }
 
 pub struct CalDavClient {
@@ -55,6 +60,16 @@ fn all_texts_inside(xml: &str, tag: &str) -> Vec<String> {
                 }
             }
             Ok(Event::Text(t)) => {
+                let txt = t
+                    .unescape()
+                    .map(|c| c.into_owned())
+                    .unwrap_or_else(|_| String::from_utf8_lossy(&t).into_owned());
+                let txt = txt.trim().to_string();
+                if !txt.is_empty() && stack.iter().any(|s| s == tag) {
+                    out.push(txt);
+                }
+            }
+            Ok(Event::CData(t)) => {
                 let txt = String::from_utf8_lossy(&t).trim().to_string();
                 if !txt.is_empty() && stack.iter().any(|s| s == tag) {
                     out.push(txt);
@@ -68,61 +83,137 @@ fn all_texts_inside(xml: &str, tag: &str) -> Vec<String> {
     out
 }
 
-fn parse_calendar_list(xml: &str) -> Vec<CalInfo> {
+fn xml_unescape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let chars: Vec<(usize, char)> = s.char_indices().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        let (_, c) = chars[i];
+        if c == '&' {
+            let mut j = i + 1;
+            let mut ent = String::new();
+            while j < chars.len() && chars[j].1 != ';' && ent.len() < 12 {
+                ent.push(chars[j].1);
+                j += 1;
+            }
+            if j < chars.len() && chars[j].1 == ';' {
+                let rep = match ent.as_str() {
+                    "amp" => Some('&'),
+                    "lt" => Some('<'),
+                    "gt" => Some('>'),
+                    "quot" => Some('"'),
+                    "apos" => Some('\''),
+                    _ => None,
+                };
+                if let Some(r) = rep {
+                    out.push(r);
+                    i = j + 1;
+                    continue;
+                }
+            }
+            out.push('&');
+            i += 1;
+        } else {
+            out.push(c);
+            i += 1;
+        }
+    }
+    out
+}
+
+fn calendar_data_from_block(block: &str) -> Option<String> {
+    let start = block.find("<calendar-data")?;
+    let open_end = block[start..].find('>')? + start;
+    let content_start = open_end + 1;
+    let close = block[content_start..].find("</calendar-data>")? + content_start;
+    Some(xml_unescape(&block[content_start..close]))
+}
+
+fn push_block_start(block: &mut String, e: &quick_xml::events::BytesStart) {
+    block.push('<');
+    block.push_str(&local(e.name()));
+    for attr in e.attributes().flatten() {
+        let key = String::from_utf8_lossy(attr.key.local_name().as_ref()).into_owned();
+        let val = String::from_utf8_lossy(&attr.value).into_owned();
+        block.push_str(&format!(" {key}=\"{val}\""));
+    }
+    block.push('>');
+}
+
+fn calendar_from_block(block: &str) -> Option<CalInfo> {
+    if !block.contains("<calendar") {
+        return None;
+    }
+    let comps = block
+        .split("<supported-calendar-component-set>")
+        .nth(1)
+        .and_then(|s| s.split("</supported-calendar-component-set>").next())
+        .unwrap_or("");
+    let has_any = comps.contains("name=");
+    let has_vevent = comps.to_uppercase().contains("VEVENT");
+    if has_any && !has_vevent {
+        return None;
+    }
+    let href = all_texts_inside(block, "href").into_iter().next()?;
+    let name = all_texts_inside(block, "displayname").into_iter().next();
+    let color = all_texts_inside(block, "calendar-color").into_iter().next();
+    Some(CalInfo {
+        href,
+        display_name: name,
+        color,
+    })
+}
+
+fn response_blocks(xml: &str) -> Vec<String> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
-    let mut items: Vec<CalInfo> = Vec::new();
-    let mut current: Option<(Option<String>, Option<String>)> = None;
-    let mut in_href = false;
-    let mut in_displayname = false;
+    let mut blocks: Vec<String> = Vec::new();
+    let mut in_response = false;
+    let mut block = String::new();
     let mut buf = Vec::new();
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) => {
                 let name = local(e.name());
-                match name.as_str() {
-                    "response" => current = Some((None, None)),
-                    "href" if current.is_some() => in_href = true,
-                    "displayname" if current.is_some() => in_displayname = true,
-                    _ => {}
+                if name == "response" {
+                    in_response = true;
+                    block.clear();
+                } else if in_response {
+                    push_block_start(&mut block, &e);
+                }
+            }
+            Ok(Event::Empty(e)) => {
+                if in_response {
+                    let name = local(e.name());
+                    if name != "response" {
+                        push_block_start(&mut block, &e);
+                        block.push_str("</");
+                        block.push_str(&name);
+                        block.push('>');
+                    }
                 }
             }
             Ok(Event::End(e)) => {
                 let name = local(e.name());
-                match name.as_str() {
-                    "href" => in_href = false,
-                    "displayname" => in_displayname = false,
-                    "response" => {
-                        if let Some((href, name)) = current.take() {
-                            if let Some(href) = href {
-                                items.push(CalInfo {
-                                    href,
-                                    display_name: name,
-                                });
-                            }
-                        }
-                    }
-                    _ => {}
+                if name == "response" && in_response {
+                    blocks.push(std::mem::take(&mut block));
+                    in_response = false;
+                } else if in_response {
+                    block.push_str("</");
+                    block.push_str(&name);
+                    block.push('>');
                 }
             }
             Ok(Event::Text(t)) => {
-                let txt = String::from_utf8_lossy(&t).trim().to_string();
-                if txt.is_empty() {
-                    buf.clear();
-                    continue;
+                if in_response {
+                    if let Ok(t) = t.unescape() {
+                        block.push_str(t.as_ref());
+                    }
                 }
-                if in_href {
-                    if let Some(cur) = current.as_mut() {
-                        if cur.0.is_none() {
-                            cur.0 = Some(txt.clone());
-                        }
-                    }
-                } else if in_displayname {
-                    if let Some(cur) = current.as_mut() {
-                        if cur.1.is_none() {
-                            cur.1 = Some(txt.clone());
-                        }
-                    }
+            }
+            Ok(Event::CData(t)) => {
+                if in_response {
+                    block.push_str(&String::from_utf8_lossy(&t));
                 }
             }
             Ok(Event::Eof) | Err(_) => break,
@@ -130,7 +221,14 @@ fn parse_calendar_list(xml: &str) -> Vec<CalInfo> {
         }
         buf.clear();
     }
-    items
+    blocks
+}
+
+fn parse_calendar_list(xml: &str) -> Vec<CalInfo> {
+    response_blocks(xml)
+        .iter()
+        .filter_map(|b| calendar_from_block(b))
+        .collect()
 }
 
 fn full_url(path: &str) -> String {
@@ -183,6 +281,7 @@ impl CalDavClient {
         let resp = self
             .authed("REPORT", &full_url(path))
             .header(CONTENT_TYPE, "application/xml; charset=utf-8")
+            .header("Depth", "1")
             .body(xml.to_string())
             .send()
             .map_err(|e| format!("network error: {e}"))?;
@@ -210,8 +309,8 @@ impl CalDavClient {
 
     pub fn list_calendars(&self) -> Result<Vec<CalInfo>, String> {
         let home = self.home_set_href()?;
-        let xml = r#"<D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
-            <D:prop><D:displayname/><C:supported-calendar-component-set/><D:resourcetype/></D:prop>
+        let xml = r#"<D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:A="http://apple.com/ns/ical/">
+            <D:prop><D:displayname/><C:supported-calendar-component-set/><D:resourcetype/><A:calendar-color/></D:prop>
         </D:propfind>"#;
         let body = self.propfind(&home, xml, "1")?;
         Ok(parse_calendar_list(&body))
@@ -240,16 +339,27 @@ impl CalDavClient {
         );
         let body = self.report(calendar_href, &xml)?;
         let mut events = Vec::new();
-        for ics in all_texts_inside(&body, "calendar-data") {
-            events.extend(parse_ics(&ics));
+        for block in response_blocks(&body) {
+            let href = all_texts_inside(&block, "href").into_iter().next();
+            let ics = calendar_data_from_block(&block);
+            if let Some(ics) = ics {
+                for mut ev in parse_ics(&ics) {
+                    ev.href = href.clone();
+                    events.push(ev);
+                }
+            }
         }
         Ok(events)
     }
 
     pub fn put_event(&self, calendar_href: &str, uid: &str, ics: &str) -> Result<String, String> {
         let href = format!("{}/{}.ics", calendar_href.trim_end_matches('/'), uid);
+        self.put_event_at(&href, ics)
+    }
+
+    pub fn put_event_at(&self, href: &str, ics: &str) -> Result<String, String> {
         let resp = self
-            .authed("PUT", &full_url(&href))
+            .authed("PUT", &full_url(href))
             .header(CONTENT_TYPE, "text/calendar; charset=utf-8")
             .body(ics.to_string())
             .send()
@@ -260,7 +370,7 @@ impl CalDavClient {
                 .get(LOCATION)
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.to_string());
-            Ok(location.unwrap_or(href))
+            Ok(location.unwrap_or_else(|| href.to_string()))
         } else {
             Err(format!("CalDAV PUT failed with {}", resp.status()))
         }
@@ -369,6 +479,16 @@ pub fn parse_ics(ics: &str) -> Vec<IcsEvent> {
                     "STATUS" => ev.status = Some(value.to_string()),
                     "DTSTART" => ev.starts_at = Some(ics_to_iso(value, head)),
                     "DTEND" => ev.ends_at = Some(ics_to_iso(value, head)),
+                    "RRULE" => ev.rrule = Some(value.to_string()),
+                    "RECURRENCE-ID" => ev.recurrence_id = Some(value.to_string()),
+                    "EXDATE" => {
+                        for part in value.split(',') {
+                            let p = part.trim();
+                            if !p.is_empty() {
+                                ev.exdates.push(p.to_string());
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -526,6 +646,37 @@ fn is_leap(y: u32) -> bool {
     (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
 }
 
+pub fn iso_to_ics_dt(value: &str) -> Option<(String, bool)> {
+    let v = value.trim();
+    let is_all_day = v.len() == 10 && v.as_bytes()[4] == b'-' && v.as_bytes()[7] == b'-';
+    if is_all_day {
+        let digits: String = v.chars().filter(|c| c.is_ascii_digit()).collect();
+        if digits.len() != 8 {
+            return None;
+        }
+        return Some((digits, true));
+    }
+    let has_tz = v.ends_with('Z') || v.ends_with('z');
+    let t = v.trim_end_matches(['Z', 'z']);
+    let digits: String = t.chars().filter(|c| c.is_ascii_digit()).collect();
+    if digits.len() < 12 {
+        return None;
+    }
+    let mut out = format!(
+        "{}{}{}T{}{}{}",
+        &digits[0..4],
+        &digits[4..6],
+        &digits[6..8],
+        &digits[8..10],
+        &digits[10..12],
+        if digits.len() >= 14 { &digits[12..14] } else { "00" }
+    );
+    if has_tz {
+        out.push('Z');
+    }
+    Some((out, false))
+}
+
 pub fn build_event_ics(
     uid: &str,
     title: &str,
@@ -533,11 +684,27 @@ pub fn build_event_ics(
     dtstart: &str,
     dtend: &str,
     all_day: bool,
+    rrule: Option<&str>,
+    exdates: &[String],
 ) -> String {
     let start_attr = if all_day { "DTSTART;VALUE=DATE" } else { "DTSTART" };
     let end_attr = if all_day { "DTEND;VALUE=DATE" } else { "DTEND" };
+    let rrule_line = match rrule {
+        Some(r) if !r.trim().is_empty() => format!("\r\nRRULE:{}", r.trim()),
+        _ => String::new(),
+    };
+    let exdate_line = if exdates.is_empty() {
+        String::new()
+    } else {
+        let vals = exdates.join(",");
+        if all_day {
+            format!("\r\nEXDATE;VALUE=DATE:{vals}")
+        } else {
+            format!("\r\nEXDATE:{vals}")
+        }
+    };
     format!(
-        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//School Hub//School Hub//EN\r\nBEGIN:VEVENT\r\nUID:{uid}@schoolhub\r\nDTSTAMP:{now}\r\n{start_attr}:{dtstart}\r\n{end_attr}:{dtend}\r\nSUMMARY:{title}\r\nDESCRIPTION:{desc}\r\nSTATUS:CONFIRMED\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:School Hub reminder\r\nTRIGGER:-PT12H\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR",
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//School Hub//School Hub//EN\r\nBEGIN:VEVENT\r\nUID:{uid}@schoolhub\r\nDTSTAMP:{now}\r\n{start_attr}:{dtstart}\r\n{end_attr}:{dtend}\r\nSUMMARY:{title}\r\nDESCRIPTION:{desc}\r\nSTATUS:CONFIRMED{rrule_line}{exdate_line}\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:School Hub reminder\r\nTRIGGER:-PT12H\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR",
         uid = uid,
         now = now_ics_utc(),
         start_attr = start_attr,
@@ -623,6 +790,42 @@ END:VCALENDAR";
     }
 
     #[test]
+    fn calendar_data_survives_unescaped_ampersand() {
+        let block = "<response><href>/cal/evt.ics</href><propstat><prop><calendar-data xmlns=\"urn:ietf:params:xml:ns:caldav\">\
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:evt-amp
+SUMMARY:Movie
+URL;VALUE=URI:message:%3Cx%3E?c=1&amp;k=%7Cmovie
+X-TAIL:rest
+END:VEVENT
+END:VCALENDAR\
+</calendar-data></prop></propstat></response>";
+        let ics = calendar_data_from_block(block).unwrap();
+        let events = parse_ics(&ics);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].uid, "evt-amp");
+        assert_eq!(events[0].summary.as_deref(), Some("Movie"));
+    }
+
+    #[test]
+    fn calendar_data_keeps_literal_ampersand_from_icloud() {
+        let block = "<response><href>/cal/evt.ics</href><propstat><prop><calendar-data>\
+BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:evt-rawamp
+SUMMARY:Movie
+URL;VALUE=URI:message:%3Cx%3E?c=1&k=%7Cmovie
+END:VEVENT
+END:VCALENDAR\
+</calendar-data></prop></propstat></response>";
+        let ics = calendar_data_from_block(block).unwrap();
+        let events = parse_ics(&ics);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].uid, "evt-rawamp");
+    }
+
+    #[test]
     fn parses_multiple_events() {
         let ics = "\
 BEGIN:VCALENDAR
@@ -643,7 +846,7 @@ END:VCALENDAR";
 
     #[test]
     fn builds_all_day_ics() {
-        let ics = build_event_ics("evt-7", "Final; Exam (calc)", "read ch. 4,5", "20260914", "20260915", true);
+        let ics = build_event_ics("evt-7", "Final; Exam (calc)", "read ch. 4,5", "20260914", "20260915", true, None, &[]);
         assert!(ics.starts_with("BEGIN:VCALENDAR"));
         assert!(ics.trim_end().ends_with("END:VCALENDAR"));
         assert!(ics.contains("UID:evt-7@schoolhub"));
@@ -656,10 +859,35 @@ END:VCALENDAR";
 
     #[test]
     fn builds_datetime_ics_without_value_date() {
-        let ics = build_event_ics("evt-1", "Homework", "", "20260914T235900", "20260915T005900", false);
+        let ics = build_event_ics("evt-1", "Homework", "", "20260914T235900", "20260915T005900", false, None, &[]);
         assert!(ics.contains("DTSTART:20260914T235900"));
         assert!(ics.contains("DTEND:20260915T005900"));
         assert!(!ics.contains("VALUE=DATE"));
+    }
+
+    #[test]
+    fn builds_recurring_ics_with_rrule_and_exdate() {
+        let exdates = vec!["20260915".to_string()];
+        let ics = build_event_ics(
+            "evt-r",
+            "Club",
+            "",
+            "20260914",
+            "20260915",
+            true,
+            Some("FREQ=WEEKLY;BYDAY=MO,WE"),
+            &exdates,
+        );
+        assert!(ics.contains("RRULE:FREQ=WEEKLY;BYDAY=MO,WE"));
+        assert!(ics.contains("EXDATE;VALUE=DATE:20260915"));
+    }
+
+    #[test]
+    fn iso_to_ics_converts_all_day_and_timed() {
+        assert_eq!(iso_to_ics_dt("2026-09-14"), Some(("20260914".into(), true)));
+        assert_eq!(iso_to_ics_dt("2026-09-14T14:30"), Some(("20260914T143000".into(), false)));
+        assert_eq!(iso_to_ics_dt("2026-09-14T14:30:00Z"), Some(("20260914T143000Z".into(), false)));
+        assert_eq!(iso_to_ics_dt("garbage"), None);
     }
 
     #[test]
@@ -725,5 +953,44 @@ END:VCALENDAR";
     fn civil_epoch_is_1970_01_01() {
         let (y, m, d, _, _, _) = days_from_civil_to_ymd(0);
         assert_eq!((y, m, d), (1970, 1, 1));
+    }
+
+    #[test]
+    fn calendar_list_filters_non_calendar_collections() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <D:response>
+    <D:href>/8151722386/calendars/</D:href>
+    <D:propstat>
+      <D:prop><D:displayname>Holden Caldwell</D:displayname><D:resourcetype><D:collection/></D:resourcetype></D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/8151722386/calendars/ADB1B8B9-AA46-444E-BC76-CB0A0602FA36/</D:href>
+    <D:propstat>
+      <D:prop><D:displayname>Holden Calendar</D:displayname><D:resourcetype><D:collection/><C:calendar/></D:resourcetype><C:supported-calendar-component-set><C:comp name="VEVENT"/></C:supported-calendar-component-set></D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/8151722386/calendars/194a63c9-f4a5-4d34-a721-e0039b36c1c8/</D:href>
+    <D:propstat>
+      <D:prop><D:displayname>Reminders</D:displayname><D:resourcetype><D:collection/><C:calendar/></D:resourcetype><C:supported-calendar-component-set><C:comp name="VTODO"/></C:supported-calendar-component-set></D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/8151722386/calendars/inbox/</D:href>
+    <D:propstat>
+      <D:prop><D:displayname></D:displayname><D:resourcetype><D:collection/></D:resourcetype></D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+</D:multistatus>"#;
+        let items = parse_calendar_list(xml);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].href, "/8151722386/calendars/ADB1B8B9-AA46-444E-BC76-CB0A0602FA36/");
+        assert_eq!(items[0].display_name.as_deref(), Some("Holden Calendar"));
     }
 }

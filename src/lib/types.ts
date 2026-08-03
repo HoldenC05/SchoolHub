@@ -42,10 +42,24 @@ export interface Assignment {
 export interface Meeting {
   id: number;
   activity_id: number | null;
+  course_id: number | null;
   title: string;
   starts_at: string | null;
   ends_at: string | null;
   agenda: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CourseFile {
+  id: number;
+  course_id: number | null;
+  title: string;
+  filename: string | null;
+  mime: string | null;
+  size: number | null;
+  data: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -94,7 +108,13 @@ export interface CalendarEvent {
   starts_at: string | null;
   ends_at: string | null;
   location: string | null;
+  description: string | null;
   source: string;
+  calendar_href: string | null;
+  remote_href: string | null;
+  rrule: string | null;
+  recurrence_id: string | null;
+  exdates: string | null;
   created_at: string;
   updated_at: string;
 }

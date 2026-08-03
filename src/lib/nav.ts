@@ -1,5 +1,6 @@
 export type Nav =
   | "today"
+  | "calendar"
   | "planner"
   | "classes"
   | "homework"
@@ -7,4 +8,5 @@ export type Nav =
   | "ideas"
   | "activities"
   | "integrations"
-  | { kind: "activity"; id: number };
+  | { kind: "activity"; id: number }
+  | { kind: "course"; id: number };
