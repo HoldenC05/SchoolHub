@@ -24,7 +24,7 @@ import {
   TextInput,
 } from "../components/ui";
 
-type SubTab = "overview" | "calendar" | "assignments" | "meetings" | "notes" | "files" | "projects";
+type SubTab = "overview" | "assignments" | "meetings" | "notes" | "files" | "projects";
 
 function parseDate(s: string | null): Date | null {
   if (!s) return null;
@@ -114,7 +114,6 @@ export function CoursePage({ courseId }: { courseId: number }) {
 
   const tabs: { key: SubTab; label: string }[] = [
     { key: "overview", label: "Overview" },
-    { key: "calendar", label: "Calendar" },
     { key: "assignments", label: `Assignments (${myAssignments.length})` },
     { key: "meetings", label: `Meetings (${myMeetings.length})` },
     { key: "notes", label: `Notes (${myNotes.length})` },
@@ -158,6 +157,7 @@ export function CoursePage({ courseId }: { courseId: number }) {
 
       {sub === "overview" && (
         <div className="space-y-4">
+          <ClassCalendar assignments={myAssignments} meetings={myMeetings} />
           {nextUp && (
             <Card className="border-indigo-500/30 bg-indigo-500/5">
               <p className="text-xs font-semibold uppercase tracking-wider text-indigo-300">
@@ -236,10 +236,6 @@ export function CoursePage({ courseId }: { courseId: number }) {
             </div>
           )}
         </div>
-      )}
-
-      {sub === "calendar" && (
-        <ClassCalendar assignments={myAssignments} meetings={myMeetings} />
       )}
 
       {sub === "assignments" && (
