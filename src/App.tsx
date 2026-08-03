@@ -17,6 +17,7 @@ import { ActivitiesPage } from "./pages/ActivitiesPage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { CoursePage } from "./pages/CoursePage";
 import { IntegrationsPage } from "./pages/IntegrationsPage";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 function App() {
   const [nav, setNav] = useState<Nav>("today");
@@ -94,42 +95,44 @@ function App() {
   else page = <ActivityPage activityId={nav.id} />;
 
   return (
-    <div className="flex h-full">
-      <div
-        className={`fixed inset-y-0 left-0 z-40 md:static md:z-auto ${
-          mobileNavOpen ? "block" : "hidden md:block"
-        }`}
-      >
-        <Sidebar
-          nav={nav}
-          onNavigate={navigate}
-          activities={activities.data}
-          onAddActivity={() => navigate("activities")}
-        />
-      </div>
-
-      {mobileNavOpen && (
+    <ErrorBoundary>
+      <div className="flex h-full">
         <div
-          className="fixed inset-0 z-30 bg-black/50 md:hidden"
-          onClick={() => setMobileNavOpen(false)}
-        />
-      )}
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-3 border-b border-slate-800 bg-slate-950/80 px-4 py-3 md:hidden">
-          <button
-            onClick={() => setMobileNavOpen(true)}
-            className="rounded-md p-1 text-slate-400 hover:bg-slate-800"
-          >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </button>
-          <span className="font-semibold text-slate-100">School Hub</span>
+          className={`fixed inset-y-0 left-0 z-40 md:static md:z-auto ${
+            mobileNavOpen ? "block" : "hidden md:block"
+          }`}
+        >
+          <Sidebar
+            nav={nav}
+            onNavigate={navigate}
+            activities={activities.data}
+            onAddActivity={() => navigate("activities")}
+          />
         </div>
-        <main className="flex-1 overflow-y-auto p-5 pb-12 md:p-8">{page}</main>
+
+        {mobileNavOpen && (
+          <div
+            className="fixed inset-0 z-30 bg-black/50 md:hidden"
+            onClick={() => setMobileNavOpen(false)}
+          />
+        )}
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex items-center gap-3 border-b border-slate-800 bg-slate-950/80 px-4 py-3 md:hidden">
+            <button
+              onClick={() => setMobileNavOpen(true)}
+              className="rounded-md p-1 text-slate-400 hover:bg-slate-800"
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+            <span className="font-semibold text-slate-100">School Hub</span>
+          </div>
+          <main className="flex-1 overflow-y-auto p-5 pb-12 md:p-8">{page}</main>
+        </div>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 }
 

@@ -273,7 +273,7 @@ export function CoursePage({ courseId }: { courseId: number }) {
       )}
 
       <CourseAssignmentModal
-        key={assignmentModal.editing?.id ?? "new"}
+        key={assignmentModal.editing ? `assignment-${assignmentModal.editing.id}` : "add-assignment"}
         open={assignmentModal.open}
         onClose={() => setAssignmentModal({ open: false, editing: null })}
         onDone={refreshAssignments}
@@ -281,7 +281,7 @@ export function CoursePage({ courseId }: { courseId: number }) {
         courseId={courseId}
       />
       <CourseMeetingModal
-        key={meetingModal.editing?.id ?? "new"}
+        key={meetingModal.editing ? `meeting-${meetingModal.editing.id}` : "add-meeting"}
         open={meetingModal.open}
         onClose={() => setMeetingModal({ open: false, editing: null })}
         onDone={refreshMeetings}

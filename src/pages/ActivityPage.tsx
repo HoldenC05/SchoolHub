@@ -176,7 +176,7 @@ export function ActivityPage({ activityId }: { activityId: number }) {
       )}
 
       <MeetingModal
-        key={meetingModal.editing?.id ?? "new"}
+        key={meetingModal.editing ? `meeting-${meetingModal.editing.id}` : "add-meeting"}
         open={meetingModal.open}
         onClose={() => setMeetingModal({ open: false, editing: null })}
         onDone={refreshMeetings}
@@ -184,7 +184,7 @@ export function ActivityPage({ activityId }: { activityId: number }) {
         activityId={activityId}
       />
       <ProjectModal
-        key={projectModal.editing?.id ?? "new"}
+        key={projectModal.editing ? `project-${projectModal.editing.id}` : "add-project"}
         open={projectModal.open}
         onClose={() => setProjectModal({ open: false, editing: null })}
         onDone={refreshProjects}
