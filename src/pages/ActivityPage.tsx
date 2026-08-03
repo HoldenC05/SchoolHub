@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useData, useCreate, useUpdate, useDelete } from "../lib/useData";
+import { toLocalInput } from "../lib/datetime";
 import type { Activity, Meeting, Note, Project } from "../lib/types";
 import {
   Button,
@@ -11,6 +12,7 @@ import {
   Modal,
   Pill,
   TextInput,
+  inputStyles,
 } from "../components/ui";
 
 type SubTab = "overview" | "meetings" | "projects" | "notes";
@@ -438,7 +440,7 @@ function MeetingModal({
   });
   const { update, error: updateError } = useUpdate<Meeting>("/api/meetings");
   const [title, setTitle] = useState(initial?.title ?? "");
-  const [startsAt, setStartsAt] = useState(initial?.starts_at ?? "");
+  const [startsAt, setStartsAt] = useState(toLocalInput(initial?.starts_at));
   const [agenda, setAgenda] = useState(initial?.agenda ?? "");
   const error = createError || updateError;
 
@@ -474,7 +476,7 @@ function MeetingModal({
           <TextInput value={title} onChange={setTitle} placeholder="e.g. Robotics build session" />
         </Field>
         <Field label="When">
-          <TextInput value={startsAt} onChange={setStartsAt} placeholder="e.g. 2026-09-20T16:00" />
+          <input type="datetime-local" className={inputStyles} value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
         </Field>
         <Field label="Agenda">
           <TextInput value={agenda} onChange={setAgenda} placeholder="e.g. Motor wiring, design review" />
@@ -509,7 +511,7 @@ function ProjectModal({
   });
   const { update, error: updateError } = useUpdate<Project>("/api/projects");
   const [title, setTitle] = useState(initial?.title ?? "");
-  const [deadline, setDeadline] = useState(initial?.deadline ?? "");
+  const [deadline, setDeadline] = useState(toLocalInput(initial?.deadline));
   const [status, setStatus] = useState(initial?.status ?? "backlog");
   const error = createError || updateError;
 
@@ -545,7 +547,7 @@ function ProjectModal({
           <TextInput value={title} onChange={setTitle} placeholder="e.g. Competition robot chassis" />
         </Field>
         <Field label="Deadline">
-          <TextInput value={deadline} onChange={setDeadline} placeholder="e.g. 2026-11-02" />
+          <input type="datetime-local" className={inputStyles} value={deadline} onChange={(e) => setDeadline(e.target.value)} />
         </Field>
         <div className="flex items-center gap-2">
           <input

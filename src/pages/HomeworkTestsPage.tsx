@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useData, useCreate, useUpdate, useDelete } from "../lib/useData";
+import { toLocalInput } from "../lib/datetime";
 import type { Assignment, AssignmentKind, AssignmentStatus, Course } from "../lib/types";
 import { KIND_LABELS, STATUS_LABELS } from "../lib/types";
 import {
@@ -13,6 +14,7 @@ import {
   Pill,
   SelectInput,
   TextInput,
+  inputStyles,
 } from "../components/ui";
 
 function fmtDue(s: string | null): string {
@@ -46,7 +48,7 @@ function AssignmentModal({
   const [title, setTitle] = useState(initial?.title ?? "");
   const [kind, setKind] = useState<AssignmentKind>(initial?.kind ?? "homework");
   const [courseId, setCourseId] = useState(initial?.course_id ? String(initial.course_id) : "");
-  const [dueAt, setDueAt] = useState(initial?.due_at ?? "");
+  const [dueAt, setDueAt] = useState(toLocalInput(initial?.due_at));
   const [status, setStatus] = useState<AssignmentStatus>(initial?.status ?? "todo");
   const error = createError || updateError;
 
@@ -113,7 +115,7 @@ function AssignmentModal({
           />
         </Field>
         <Field label="Due date">
-          <TextInput value={dueAt} onChange={setDueAt} placeholder="e.g. 2026-09-15T23:59" />
+          <input type="datetime-local" className={inputStyles} value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
         </Field>
         {error && <p className="text-xs text-rose-400">{error.message}</p>}
         <div className="flex justify-end gap-2 pt-1">

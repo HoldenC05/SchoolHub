@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useData, useCreate, useUpdate, useDelete } from "../lib/useData";
+import { toLocalInput } from "../lib/datetime";
 import type {
   Assignment,
   AssignmentKind,
@@ -22,6 +23,7 @@ import {
   Pill,
   SelectInput,
   TextInput,
+  inputStyles,
 } from "../components/ui";
 
 type SubTab = "overview" | "assignments" | "meetings" | "notes" | "files" | "projects";
@@ -980,7 +982,7 @@ function CourseAssignmentModal({
   const { update, error: updateError } = useUpdate<Assignment>("/api/assignments");
   const [title, setTitle] = useState(initial?.title ?? "");
   const [kind, setKind] = useState<AssignmentKind>(initial?.kind ?? "homework");
-  const [dueAt, setDueAt] = useState(initial?.due_at ?? "");
+  const [dueAt, setDueAt] = useState(toLocalInput(initial?.due_at));
   const [status, setStatus] = useState<AssignmentStatus>(initial?.status ?? "todo");
   const error = createError || updateError;
 
@@ -1037,7 +1039,7 @@ function CourseAssignmentModal({
           </Field>
         </div>
         <Field label="Due date">
-          <TextInput value={dueAt} onChange={setDueAt} placeholder="e.g. 2026-09-15T23:59" />
+          <input type="datetime-local" className={inputStyles} value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
         </Field>
         {error && <p className="text-xs text-rose-400">{error.message}</p>}
         <div className="flex justify-end gap-2 pt-1">
@@ -1069,7 +1071,7 @@ function CourseMeetingModal({
   });
   const { update, error: updateError } = useUpdate<Meeting>("/api/meetings");
   const [title, setTitle] = useState(initial?.title ?? "");
-  const [startsAt, setStartsAt] = useState(initial?.starts_at ?? "");
+  const [startsAt, setStartsAt] = useState(toLocalInput(initial?.starts_at));
   const [agenda, setAgenda] = useState(initial?.agenda ?? "");
   const error = createError || updateError;
 
@@ -1105,7 +1107,7 @@ function CourseMeetingModal({
           <TextInput value={title} onChange={setTitle} placeholder="e.g. Study session" />
         </Field>
         <Field label="When">
-          <TextInput value={startsAt} onChange={setStartsAt} placeholder="e.g. 2026-09-20T16:00" />
+          <input type="datetime-local" className={inputStyles} value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
         </Field>
         <Field label="Agenda">
           <TextInput value={agenda} onChange={setAgenda} placeholder="e.g. Review chapters 1–3" />
@@ -1140,7 +1142,7 @@ function ProjectModal({
   });
   const { update, error: updateError } = useUpdate<Project>("/api/projects");
   const [title, setTitle] = useState(initial?.title ?? "");
-  const [deadline, setDeadline] = useState(initial?.deadline ?? "");
+  const [deadline, setDeadline] = useState(toLocalInput(initial?.deadline));
   const [status, setStatus] = useState(initial?.status ?? "backlog");
   const error = createError || updateError;
 
@@ -1176,7 +1178,7 @@ function ProjectModal({
           <TextInput value={title} onChange={setTitle} placeholder="e.g. Research paper" />
         </Field>
         <Field label="Deadline">
-          <TextInput value={deadline} onChange={setDeadline} placeholder="e.g. 2026-11-02" />
+          <input type="datetime-local" className={inputStyles} value={deadline} onChange={(e) => setDeadline(e.target.value)} />
         </Field>
         <div className="flex items-center gap-2">
           <input

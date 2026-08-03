@@ -57,7 +57,7 @@ export function Field({
   );
 }
 
-const inputStyles =
+export const inputStyles =
   "rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 placeholder-slate-500 outline-none focus:border-indigo-500";
 
 export function TextInput({
