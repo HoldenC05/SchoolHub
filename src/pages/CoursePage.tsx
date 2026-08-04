@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { useData, useCreate, useUpdate, useDelete } from "../lib/useData";
+import { api } from "../lib/api";
 import { toLocalInput } from "../lib/datetime";
+import { FilePreview } from "../components/FilePreview";
 import type {
   Assignment,
   AssignmentKind,
@@ -82,7 +84,7 @@ const KIND_DOT: Record<AssignmentKind | "meeting", string> = {
 
 const STATUS_ORDER: AssignmentStatus[] = ["todo", "in_progress", "done", "graded"];
 
-export function CoursePage({ courseId }: { courseId: number }) {
+export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenNote: (id: number) => void }) {
   const { data: course } = useData<Course>(`/api/courses/${courseId}`);
   const { data: assignments, refresh: refreshAssignments } = useData<Assignment[]>("/api/assignments");
   const { data: meetings, refresh: refreshMeetings } = useData<Meeting[]>("/api/meetings");
@@ -259,7 +261,7 @@ export function CoursePage({ courseId }: { courseId: number }) {
       )}
 
       {sub === "notes" && (
-        <NoteList notes={myNotes} onChanged={refreshNotes} courseId={courseId} />
+        <NoteList notes={myNotes} onChanged={refreshNotes} courseId={courseId} onOpenNote={onOpenNote} />
       )}
 
       {sub === "files" && (
@@ -595,103 +597,58 @@ function NoteList({
   notes,
   onChanged,
   courseId,
+  onOpenNote,
 }: {
   notes: Note[];
   onChanged: () => void;
   courseId: number;
+  onOpenNote: (id: number) => void;
 }) {
-  const { create, error } = useCreate<Note>("/api/notes", onChanged);
-  const { update } = useUpdate<Note>("/api/notes");
   const { remove } = useDelete("/api/notes");
-  const [editing, setEditing] = useState<Note | null>(null);
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
 
-  const startEdit = (n: Note) => {
-    setEditing(n);
-    setTitle(n.title);
-    setBody(n.body_md);
-  };
-
-  const save = async () => {
-    if (!title.trim()) return;
-    if (editing) {
-      const ok = await update(editing.id, { title: title.trim(), body_md: body });
-      if (ok) {
-        setEditing(null);
-        onChanged();
-      }
-    } else {
-      create({
-        title: title.trim(),
-        body_md: body,
-        entity_type: "course",
-        entity_id: courseId,
-      });
-    }
-    setTitle("");
-    setBody("");
+  const createNote = async () => {
+    const created = await api.create<Note>("/api/notes", {
+      title: "Untitled",
+      body_md: "",
+      entity_type: "course",
+      entity_id: courseId,
+    });
+    onChanged();
+    onOpenNote(created.id);
   };
 
   return (
     <div className="space-y-3">
-      <Card>
-        <form
-          className="flex flex-col gap-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            save();
-          }}
-        >
-          <div className="flex items-center gap-2">
-            <TextInput value={title} onChange={setTitle} placeholder={editing ? "Editing…" : "Note title"} />
-            {editing && (
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setEditing(null);
-                  setTitle("");
-                  setBody("");
-                }}
-              >
-                Cancel
-              </Button>
-            )}
-          </div>
-          <textarea
-            className="min-h-24 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 placeholder-slate-500 outline-none focus:border-indigo-500"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder="Write in Markdown…"
-          />
-          {error && <p className="text-xs text-rose-400">{error.message}</p>}
-          <div className="flex justify-end">
-            <Button type="submit">{editing ? "Save" : "Add note"}</Button>
-          </div>
-        </form>
-      </Card>
+      <div className="flex justify-end">
+        <Button onClick={() => void createNote()}>+ New note</Button>
+      </div>
       {notes.length === 0 ? (
-        <EmptyState icon="📝" title="No notes" />
+        <EmptyState icon="📝" title="No notes" hint="Notes open in the full note editor" />
       ) : (
         notes.map((n) => (
-          <Card key={n.id} className="group">
-            <div className="flex items-start justify-between gap-3">
-              <p className="font-medium text-slate-100">{n.title}</p>
-              <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
-                <IconButton title="Edit" onClick={() => startEdit(n)}>
-                  <EditIcon />
-                </IconButton>
-                <DeleteButton
-                  onConfirm={async () => {
-                    await remove(n.id);
-                    onChanged();
-                  }}
-                />
+          <Card
+            key={n.id}
+            className="group cursor-pointer transition-colors hover:bg-slate-900"
+            >
+            <button className="w-full text-left" onClick={() => onOpenNote(n.id)}>
+              <div className="flex items-start justify-between gap-3">
+                <p className="font-medium text-slate-100">{n.title || "Untitled"}</p>
+                <div
+                  className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <DeleteButton
+                    onConfirm={async () => {
+                      await remove(n.id);
+                      onChanged();
+                    }}
+                  />
+                </div>
               </div>
-            </div>
-            {n.body_md && (
-              <pre className="mt-2 whitespace-pre-wrap text-sm text-slate-400">{n.body_md}</pre>
-            )}
+              {n.body_md && (
+                <p className="mt-1 line-clamp-2 text-sm text-slate-400">{n.body_md}</p>
+              )}
+            </button>
           </Card>
         ))
       )}
@@ -713,6 +670,7 @@ function FileList({
     open: false,
     editing: null,
   });
+  const [preview, setPreview] = useState<CourseFile | null>(null);
 
   return (
     <div className="space-y-3">
@@ -728,15 +686,21 @@ function FileList({
             : null;
           return (
             <Card key={f.id} className="group flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-medium text-slate-100">{f.title}</p>
+              <button className="min-w-0 text-left" onClick={() => setPreview(f)}>
+                <p className="font-medium text-slate-100 hover:text-indigo-300">{f.title}</p>
                 <p className="text-xs text-slate-500">
                   {f.filename}
                   {f.size ? ` · ${(f.size / 1024).toFixed(1)} KB` : ""}
                 </p>
                 {f.notes && <p className="mt-1 text-sm text-slate-400">{f.notes}</p>}
-              </div>
+              </button>
               <div className="flex shrink-0 items-center gap-1">
+                <IconButton title="Preview" onClick={() => setPreview(f)}>
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                    <path d="M1.5 8s2.5-4 6.5-4 6.5 4 6.5 4-2.5 4-6.5 4-6.5-4-6.5-4z" stroke="currentColor" strokeWidth="1.2" />
+                    <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.2" />
+                  </svg>
+                </IconButton>
                 {href && (
                   <a
                     href={href}
@@ -771,6 +735,7 @@ function FileList({
         initial={modal.editing ?? undefined}
         courseId={courseId}
       />
+      {preview && <FilePreview file={preview} onClose={() => setPreview(null)} />}
     </div>
   );
 }

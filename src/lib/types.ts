@@ -81,8 +81,10 @@ export interface Note {
   id: number;
   entity_type: string | null;
   entity_id: number | null;
+  parent_id: number | null;
   title: string;
   body_md: string;
+  body_html: string | null;
   created_at: string;
   updated_at: string;
 }

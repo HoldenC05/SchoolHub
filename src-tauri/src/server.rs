@@ -6,6 +6,7 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use base64::Engine;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use tower_http::{
@@ -129,10 +130,87 @@ async fn remove(State(state): State<AppState>, Path((table, id)): Path<(String, 
     }
 }
 
+fn file_blob(conn: &rusqlite::Connection, id: i64) -> Result<(String, Vec<u8>), String> {
+    let (mime, data): (String, String) = conn
+        .query_row(
+            "SELECT COALESCE(mime, 'application/octet-stream'), COALESCE(data, '') FROM files WHERE id = ?1",
+            rusqlite::params![id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(|e| e.to_string())?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&data)
+        .map_err(|e| format!("failed to decode file data: {e}"))?;
+    Ok((mime, bytes))
+}
+
+async fn file_raw(State(state): State<AppState>, Path(id): Path<i64>) -> Response {
+    let conn = match state.db.lock() {
+        Ok(c) => c,
+        Err(e) => return api_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    };
+    let (mime, bytes) = match file_blob(&conn, id) {
+        Ok(x) => x,
+        Err(e) => return api_error(StatusCode::NOT_FOUND, e),
+    };
+    drop(conn);
+    let body = axum::body::Body::from(bytes);
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", mime)
+        .header("Content-Disposition", "inline")
+        .body(body)
+        .unwrap()
+}
+
+async fn file_text(State(state): State<AppState>, Path(id): Path<i64>) -> Response {
+    let conn = match state.db.lock() {
+        Ok(c) => c,
+        Err(e) => return api_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    };
+    let (_, bytes) = match file_blob(&conn, id) {
+        Ok(x) => x,
+        Err(e) => return api_error(StatusCode::NOT_FOUND, e),
+    };
+    drop(conn);
+
+    let (tx, rx) = std::sync::mpsc::channel::<Result<String, String>>();
+    std::thread::spawn(move || {
+        let _ = tx.send(extract_readable_html(&bytes));
+    });
+    match rx.recv() {
+        Ok(Ok(html)) => Json(json!({ "html": html })).into_response(),
+        Ok(Err(e)) => api_error(StatusCode::UNPROCESSABLE_ENTITY, e),
+        Err(e) => api_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
+}
+
+fn extract_readable_html(bytes: &[u8]) -> Result<String, String> {
+    let ext = if bytes.starts_with(b"PK") { "docx" } else { "rtf" };
+    let dir = std::env::temp_dir().join("schoolhub-preview");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let input = dir.join(format!("input.{ext}"));
+    std::fs::write(&input, bytes).map_err(|e| e.to_string())?;
+    let out = std::process::Command::new("textutil")
+        .arg("-convert")
+        .arg("html")
+        .arg("-stdout")
+        .arg(&input)
+        .output()
+        .map_err(|e| format!("textutil failed to run: {e}"))?;
+    let _ = std::fs::remove_file(&input);
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
 pub fn api_router(state: AppState) -> Router {
     let api = Router::new()
         .route("/api/{table}", get(list).post(create))
         .route("/api/{table}/{id}", get(get_one).patch(update).delete(remove))
+        .route("/api/files/{id}/raw", get(file_raw))
+        .route("/api/files/{id}/text", get(file_text))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth))
         .with_state(state);
 
@@ -309,5 +387,30 @@ mod tests {
         let (status, body) = send(&app, "GET", "/api/calendar_events", "secret-token", None).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body, json!([]));
+    }
+
+    #[tokio::test]
+    async fn file_raw_returns_decoded_bytes() {
+        let app = test_app("secret-token");
+        let payload = json!({
+            "title": "notes",
+            "filename": "notes.txt",
+            "mime": "text/plain",
+            "data": base64::engine::general_purpose::STANDARD.encode("hello world"),
+        });
+        let (status, created) = send(&app, "POST", "/api/files", "secret-token", Some(payload)).await;
+        assert_eq!(status, StatusCode::CREATED);
+        let id = created["id"].as_i64().expect("created file has id");
+
+        let req = Request::builder()
+            .method("GET")
+            .uri(format!("/api/files/{id}/raw"))
+            .header(AUTHORIZATION, "Bearer secret-token")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), 1024).await.unwrap();
+        assert_eq!(&bytes[..], b"hello world");
     }
 }

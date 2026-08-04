@@ -9,6 +9,8 @@ use serde_json::json;
 use std::path::PathBuf;
 use tauri::Manager;
 
+use base64::Engine;
+
 #[tauri::command]
 fn get_pairing_token(app: tauri::AppHandle) -> Result<String, String> {
     let dir = app_data_dir(&app)?;
@@ -18,6 +20,32 @@ fn get_pairing_token(app: tauri::AppHandle) -> Result<String, String> {
 #[tauri::command]
 fn api_base() -> String {
     format!("http://127.0.0.1:{}", server::PORT)
+}
+
+#[tauri::command]
+fn materialize_file(state: tauri::State<'_, db::Db>, id: i64) -> Result<String, String> {
+    let conn = state.inner();
+    let conn = conn.lock().map_err(|e| e.to_string())?;
+    let (filename, data): (String, String) = conn
+        .query_row(
+            "SELECT COALESCE(filename, title), COALESCE(data, '') FROM files WHERE id = ?1",
+            rusqlite::params![id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(|e| e.to_string())?;
+    drop(conn);
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data)
+        .map_err(|e| format!("failed to decode file data: {e}"))?;
+    let dir = std::env::temp_dir().join("schoolhub-files");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let safe_name = filename
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_' { c } else { '_' })
+        .collect::<String>();
+    let path = dir.join(format!("{id}-{safe_name}"));
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
 }
 
 fn find_tailscale() -> Option<&'static str> {
@@ -437,6 +465,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_pairing_token,
             api_base,
+            materialize_file,
             tailscale_info,
             cal_connect,
             cal_list,

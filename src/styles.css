@@ -70,3 +70,121 @@ body {
 .animate-fade-in {
   animation: fade-in 0.15s ease-out;
 }
+
+.note-body {
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: #cbd5e1;
+  caret-color: #a5b4fc;
+}
+.note-body:focus {
+  outline: none;
+}
+.note-body p {
+  margin: 0.35em 0;
+}
+.note-body h1 {
+  font-size: 1.6em;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0.7em 0 0.35em;
+}
+.note-body h2 {
+  font-size: 1.3em;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0.6em 0 0.3em;
+}
+.note-body h3 {
+  font-size: 1.1em;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin: 0.55em 0 0.25em;
+}
+.note-body strong {
+  color: #f8fafc;
+  font-weight: 600;
+}
+.note-body ul,
+.note-body ol {
+  padding-left: 1.4em;
+  margin: 0.3em 0;
+}
+.note-body ul {
+  list-style: disc;
+}
+.note-body ol {
+  list-style: decimal;
+}
+.note-body li {
+  margin: 0.15em 0;
+}
+.note-body li::marker {
+  color: #64748b;
+}
+.note-body blockquote {
+  border-left: 3px solid #6366f1;
+  margin: 0.5em 0;
+  padding: 0.1em 0 0.1em 0.9em;
+  color: #94a3b8;
+}
+.note-body code {
+  background: #1e293b;
+  border-radius: 4px;
+  padding: 0.12em 0.35em;
+  font-size: 0.85em;
+  color: #c4b5fd;
+}
+.note-body pre {
+  background: #0b1120;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  padding: 0.8em 1em;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+.note-body pre code {
+  background: transparent;
+  padding: 0;
+  color: #a5b4fc;
+}
+.note-body hr {
+  border: none;
+  border-top: 1px solid #1e293b;
+  margin: 1.2em 0;
+}
+.note-body a {
+  color: #818cf8;
+  text-decoration: underline;
+}
+.note-body ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+.note-body ul[data-type="taskList"] li {
+  display: flex;
+  gap: 0.5em;
+  align-items: flex-start;
+}
+.note-body ul[data-type="taskList"] li > label {
+  flex: none;
+  margin-top: 0.3em;
+}
+.note-body ul[data-type="taskList"] input[type="checkbox"] {
+  accent-color: #6366f1;
+  width: 1em;
+  height: 1em;
+}
+.note-body ul[data-type="taskList"] li > div {
+  flex: 1;
+}
+.note-body ul[data-type="taskList"] li > div > *:first-child {
+  margin-top: 0;
+}
+.note-body p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: #475569;
+  float: left;
+  height: 0;
+  pointer-events: none;
+}

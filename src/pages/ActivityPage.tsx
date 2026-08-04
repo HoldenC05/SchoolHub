@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useData, useCreate, useUpdate, useDelete } from "../lib/useData";
+import { api } from "../lib/api";
 import { toLocalInput } from "../lib/datetime";
 import type { Activity, Meeting, Note, Project } from "../lib/types";
 import {
@@ -30,7 +31,7 @@ const EditIcon = () => (
   </svg>
 );
 
-export function ActivityPage({ activityId }: { activityId: number }) {
+export function ActivityPage({ activityId, onOpenNote }: { activityId: number; onOpenNote: (id: number) => void }) {
   const { data: activity } = useData<Activity>(`/api/activities/${activityId}`);
   const { data: meetings, refresh: refreshMeetings } = useData<Meeting[]>("/api/meetings");
   const { data: projects, refresh: refreshProjects } = useData<Project[]>("/api/projects");
@@ -174,7 +175,7 @@ export function ActivityPage({ activityId }: { activityId: number }) {
       )}
 
       {sub === "notes" && (
-        <NoteList notes={myNotes} onChanged={refreshNotes} activityId={activityId} />
+        <NoteList notes={myNotes} onChanged={refreshNotes} activityId={activityId} onOpenNote={onOpenNote} />
       )}
 
       <MeetingModal
@@ -316,103 +317,55 @@ function NoteList({
   notes,
   onChanged,
   activityId,
+  onOpenNote,
 }: {
   notes: Note[];
   onChanged: () => void;
   activityId: number;
+  onOpenNote: (id: number) => void;
 }) {
-  const { create, error } = useCreate<Note>("/api/notes", onChanged);
-  const { update } = useUpdate<Note>("/api/notes");
   const { remove } = useDelete("/api/notes");
-  const [editing, setEditing] = useState<Note | null>(null);
-  const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
 
-  const startEdit = (n: Note) => {
-    setEditing(n);
-    setTitle(n.title);
-    setBody(n.body_md);
-  };
-
-  const save = async () => {
-    if (!title.trim()) return;
-    if (editing) {
-      const ok = await update(editing.id, { title: title.trim(), body_md: body });
-      if (ok) {
-        setEditing(null);
-        onChanged();
-      }
-    } else {
-      create({
-        title: title.trim(),
-        body_md: body,
-        entity_type: "activity",
-        entity_id: activityId,
-      });
-    }
-    setTitle("");
-    setBody("");
+  const createNote = async () => {
+    const created = await api.create<Note>("/api/notes", {
+      title: "Untitled",
+      body_md: "",
+      entity_type: "activity",
+      entity_id: activityId,
+    });
+    onChanged();
+    onOpenNote(created.id);
   };
 
   return (
     <div className="space-y-3">
-      <Card>
-        <form
-          className="flex flex-col gap-3"
-          onSubmit={(e) => {
-            e.preventDefault();
-            save();
-          }}
-        >
-          <div className="flex items-center gap-2">
-            <TextInput value={title} onChange={setTitle} placeholder={editing ? "Editing…" : "Note title"} />
-            {editing && (
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setEditing(null);
-                  setTitle("");
-                  setBody("");
-                }}
-              >
-                Cancel
-              </Button>
-            )}
-          </div>
-          <textarea
-            className="min-h-24 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 placeholder-slate-500 outline-none focus:border-indigo-500"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder="Write in Markdown…"
-          />
-          {error && <p className="text-xs text-rose-400">{error.message}</p>}
-          <div className="flex justify-end">
-            <Button type="submit">{editing ? "Save" : "Add note"}</Button>
-          </div>
-        </form>
-      </Card>
+      <div className="flex justify-end">
+        <Button onClick={() => void createNote()}>+ New note</Button>
+      </div>
       {notes.length === 0 ? (
-        <EmptyState icon="📝" title="No notes" />
+        <EmptyState icon="📝" title="No notes" hint="Notes open in the full note editor" />
       ) : (
         notes.map((n) => (
-          <Card key={n.id} className="group">
-            <div className="flex items-start justify-between gap-3">
-              <p className="font-medium text-slate-100">{n.title}</p>
-              <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
-                <IconButton title="Edit" onClick={() => startEdit(n)}>
-                  <EditIcon />
-                </IconButton>
-                <DeleteButton
-                  onConfirm={async () => {
-                    await remove(n.id);
-                    onChanged();
-                  }}
-                />
+          <Card key={n.id} className="group cursor-pointer transition-colors hover:bg-slate-900">
+            <button className="w-full text-left" onClick={() => onOpenNote(n.id)}>
+              <div className="flex items-start justify-between gap-3">
+                <p className="font-medium text-slate-100">{n.title || "Untitled"}</p>
+                <div
+                  className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <DeleteButton
+                    onConfirm={async () => {
+                      await remove(n.id);
+                      onChanged();
+                    }}
+                  />
+                </div>
               </div>
-            </div>
-            {n.body_md && (
-              <pre className="mt-2 whitespace-pre-wrap text-sm text-slate-400">{n.body_md}</pre>
-            )}
+              {n.body_md && (
+                <p className="mt-1 line-clamp-2 text-sm text-slate-400">{n.body_md}</p>
+              )}
+            </button>
           </Card>
         ))
       )}

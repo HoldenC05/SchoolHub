@@ -12,7 +12,8 @@ import { CalendarPage } from "./pages/CalendarPage";
 import { PlannerPage } from "./pages/PlannerPage";
 import { ClassesPage } from "./pages/ClassesPage";
 import { HomeworkTestsPage } from "./pages/HomeworkTestsPage";
-import { NotesPage, IdeasPage } from "./pages/IdeasNotesPage";
+import { IdeasPage } from "./pages/IdeasNotesPage";
+import NotesPage from "./pages/NotesPage";
 import { ActivitiesPage } from "./pages/ActivitiesPage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { CoursePage } from "./pages/CoursePage";
@@ -85,14 +86,29 @@ function App() {
   else if (nav === "classes")
     page = <ClassesPage onOpenCourse={(id) => navigate({ kind: "course", id })} />;
   else if (nav === "homework") page = <HomeworkTestsPage />;
-  else if (nav === "notes") page = <NotesPage />;
+  else if (nav === "notes")
+    page = (
+      <NotesPage
+        selectedId={null}
+        onSelect={(id) => navigate({ kind: "note", id })}
+        onBack={() => navigate("notes")}
+      />
+    );
   else if (nav === "ideas") page = <IdeasPage />;
   else if (nav === "activities")
     page = <ActivitiesPage onOpenActivity={(id) => navigate({ kind: "activity", id })} />;
   else if (nav === "integrations") page = <IntegrationsPage />;
   else if (typeof nav === "object" && nav.kind === "course")
-    page = <CoursePage courseId={nav.id} />;
-  else page = <ActivityPage activityId={nav.id} />;
+    page = <CoursePage courseId={nav.id} onOpenNote={(id) => navigate({ kind: "note", id })} />;
+  else if (typeof nav === "object" && nav.kind === "note")
+    page = (
+      <NotesPage
+        selectedId={nav.id}
+        onSelect={(id) => navigate({ kind: "note", id })}
+        onBack={() => navigate("notes")}
+      />
+    );
+  else page = <ActivityPage activityId={nav.id} onOpenNote={(id) => navigate({ kind: "note", id })} />;
 
   return (
     <ErrorBoundary>

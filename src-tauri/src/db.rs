@@ -182,6 +182,8 @@ const MIGRATIONS: &[&str] = &[
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );",
+    "ALTER TABLE notes ADD COLUMN parent_id INTEGER REFERENCES notes(id) ON DELETE SET NULL;
+    ALTER TABLE notes ADD COLUMN body_html TEXT;",
 ];
 
 pub fn init(path: &Path) -> rusqlite::Result<Db> {
@@ -256,7 +258,7 @@ pub const TABLES: &[(&str, &[&str])] = &[
     ),
     (
         "notes",
-        &["entity_type", "entity_id", "title", "body_md"],
+        &["entity_type", "entity_id", "parent_id", "title", "body_md", "body_html"],
     ),
     (
         "files",

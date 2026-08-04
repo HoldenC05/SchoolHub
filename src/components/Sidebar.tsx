@@ -34,7 +34,8 @@ export function Sidebar({
           {MAIN_ITEMS.map(({ nav: target, label, icon }) => {
             const active =
               nav === target ||
-              (target === "classes" && typeof nav === "object" && nav.kind === "course");
+              (target === "classes" && typeof nav === "object" && nav.kind === "course") ||
+              (target === "notes" && typeof nav === "object" && nav.kind === "note");
             return (
               <li key={label}>
                 <button

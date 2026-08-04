@@ -48,6 +48,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   get: <T,>(path: string) => request<T>(path),
+  getBlob: async (path: string): Promise<Blob> => {
+    const headers: Record<string, string> = {};
+    const token = getToken();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${apiBase()}${path}`, { headers });
+    if (!res.ok) {
+      let detail = `Request failed (${res.status})`;
+      try {
+        const body = await res.json();
+        if (body?.error) detail = body.error;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(detail);
+    }
+    return res.blob();
+  },
   create: <T,>(path: string, body: unknown) =>
     request<T>(path, {
       method: "POST",

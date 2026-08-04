@@ -9,4 +9,5 @@ export type Nav =
   | "activities"
   | "integrations"
   | { kind: "activity"; id: number }
-  | { kind: "course"; id: number };
+  | { kind: "course"; id: number }
+  | { kind: "note"; id: number };
