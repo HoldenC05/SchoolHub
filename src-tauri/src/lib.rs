@@ -23,6 +23,11 @@ fn api_base() -> String {
 }
 
 #[tauri::command]
+fn data_dir(app: tauri::AppHandle) -> Result<String, String> {
+    Ok(app_data_dir(&app)?.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
 fn materialize_file(state: tauri::State<'_, db::Db>, id: i64) -> Result<String, String> {
     let conn = state.inner();
     let conn = conn.lock().map_err(|e| e.to_string())?;
@@ -46,6 +51,60 @@ fn materialize_file(state: tauri::State<'_, db::Db>, id: i64) -> Result<String, 
     let path = dir.join(format!("{id}-{safe_name}"));
     std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
     Ok(path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+async fn export_file(
+    app: tauri::AppHandle,
+    default_name: String,
+    data_base64: String,
+) -> Result<serde_json::Value, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&data_base64)
+        .map_err(|e| format!("failed to decode export data: {e}"))?;
+    let picked = app
+        .dialog()
+        .file()
+        .set_file_name(&default_name)
+        .blocking_save_file();
+    let Some(path) = picked else {
+        return Ok(json!({ "canceled": true }));
+    };
+    let path = path.into_path().map_err(|e| e.to_string())?;
+    std::fs::write(&path, &bytes).map_err(|e| format!("failed to write file: {e}"))?;
+    Ok(json!({ "path": path.to_string_lossy().into_owned() }))
+}
+
+#[tauri::command]
+async fn export_backup(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, db::Db>,
+) -> Result<serde_json::Value, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let stamp = caldav::now_iso_utc().replace([':', '-'], "").replace('T', "-");
+    let picked = app
+        .dialog()
+        .file()
+        .set_file_name(format!("school-hub-backup-{stamp}.db"))
+        .blocking_save_file();
+    let Some(path) = picked else {
+        return Ok(json!({ "canceled": true }));
+    };
+    let path = path.into_path().map_err(|e| e.to_string())?;
+    let conn = state.inner();
+    let conn = conn.lock().map_err(|e| e.to_string())?;
+    let tmp = std::env::temp_dir().join(format!(
+        "schoolhub-backup-{}.db",
+        uuid::Uuid::new_v4().simple()
+    ));
+    let tmp_str = tmp.to_string_lossy().replace('\'', "''");
+    conn.execute_batch(&format!("VACUUM INTO '{tmp_str}'"))
+        .map_err(|e| e.to_string())?;
+    drop(conn);
+    std::fs::copy(&tmp, &path).map_err(|e| e.to_string())?;
+    let _ = std::fs::remove_file(&tmp);
+    Ok(json!({ "path": path.to_string_lossy().into_owned() }))
 }
 
 fn find_tailscale() -> Option<&'static str> {
@@ -462,10 +521,14 @@ fn app_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             get_pairing_token,
             api_base,
+            data_dir,
             materialize_file,
+            export_file,
+            export_backup,
             tailscale_info,
             cal_connect,
             cal_list,

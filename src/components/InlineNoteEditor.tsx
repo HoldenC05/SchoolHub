@@ -8,23 +8,6 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Placeholder from "@tiptap/extension-placeholder";
 import Image from "@tiptap/extension-image";
-import { marked } from "marked";
-import { useUpdate, useDelete } from "../lib/useData";
-import type { Note } from "../lib/types";
-import { Button, DeleteButton } from "./ui";
-import { noteToHtml, noteToMarkdown, noteToText, sanitizeName, saveText } from "../lib/export";
-import { formatTags, mergeTags, parseTags } from "../lib/tags";
-import { TagPills } from "./Tags";
-
-function initialHtml(note: Note): string {
-  if (note.body_html) return note.body_html;
-  if (!note.body_md) return "";
-  try {
-    return marked.parse(note.body_md, { async: false, gfm: true }) as string;
-  } catch {
-    return note.body_md;
-  }
-}
 
 function formatBytes(bytes: number): string {
   if (!bytes) return "";
@@ -75,6 +58,9 @@ type SlashItem = {
   keywords: string;
   action: (ed: Editor) => void;
 };
+
+const imageInputRef = { current: null as HTMLInputElement | null };
+const fileInputRef = { current: null as HTMLInputElement | null };
 
 const SLASH_ITEMS: SlashItem[] = [
   {
@@ -175,9 +161,6 @@ const SLASH_ITEMS: SlashItem[] = [
   },
 ];
 
-const imageInputRef = { current: null as HTMLInputElement | null };
-const fileInputRef = { current: null as HTMLInputElement | null };
-
 type SlashState = { from: number; to: number; query: string; top: number; left: number } | null;
 
 function ToolbarBtn({
@@ -235,33 +218,28 @@ function Toolbar({ editor }: { editor: Editor | null }) {
       <ToolbarBtn label="<>" title="Code block" active={editor.isActive("codeBlock")} onClick={() => editor.chain().focus().toggleCodeBlock().run()} />
       <span className="mx-1 h-5 w-px bg-slate-200" />
       <ToolbarBtn label="🔗" title="Link" active={editor.isActive("link")} onClick={link} />
-      <span className="flex-1" />
-      <ToolbarBtn label="↩" title="Undo" onClick={() => editor.chain().focus().undo().run()} />
-      <ToolbarBtn label="↪" title="Redo" onClick={() => editor.chain().focus().redo().run()} />
     </div>
   );
 }
 
-export function NoteEditor({
-  note,
-  onChanged,
-  onDeleted,
-  onBack,
+export function InlineNoteEditor({
+  initialHtml,
+  onSave,
+  placeholder = "Write your notes here…",
+  autosaveMs = 800,
 }: {
-  note: Note;
-  onChanged: () => void;
-  onDeleted: (id: number) => void;
-  onBack: () => void;
+  initialHtml: string;
+  onSave: (html: string) => void;
+  placeholder?: string;
+  autosaveMs?: number;
 }) {
-  const { update } = useUpdate<Note>("/api/notes");
-  const { remove } = useDelete("/api/notes");
-  const [title, setTitle] = useState(note.title);
-  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const titleRef = useRef(note.title);
-  titleRef.current = title;
+  const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
   const editorRef = useRef<Editor | null>(null);
   const dirtyRef = useRef(false);
   const timerRef = useRef<number | null>(null);
+  const lastSavedRef = useRef(initialHtml);
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
 
   const [slash, setSlash] = useState<SlashState>(null);
   const [index, setIndex] = useState(0);
@@ -269,11 +247,6 @@ export function NoteEditor({
   const indexRef = useRef(0);
   const popupRef = useRef<HTMLDivElement | null>(null);
   const pendingAttachRef = useRef<{ from: number; to: number } | null>(null);
-  const [exportOpen, setExportOpen] = useState(false);
-  const [tags, setTags] = useState<string[]>(parseTags(note.tags));
-  const [tagInput, setTagInput] = useState("");
-  const tagsRef = useRef(tags);
-  tagsRef.current = tags;
 
   const filtered = useMemo(() => {
     if (!slash) return SLASH_ITEMS;
@@ -290,22 +263,19 @@ export function NoteEditor({
     });
   }, [slash]);
 
-  const runSlash = useCallback(
-    (item: SlashItem) => {
-      const s = slashRef.current;
-      const ed = editorRef.current;
-      if (!s || !ed) return;
-      setSlash(null);
-      if (item.id === "image" || item.id === "file") {
-        pendingAttachRef.current = { from: s.from, to: s.to };
-        item.action(ed);
-        return;
-      }
-      ed.chain().focus().deleteRange({ from: s.from, to: s.to }).run();
+  const runSlash = useCallback((item: SlashItem) => {
+    const s = slashRef.current;
+    const ed = editorRef.current;
+    if (!s || !ed) return;
+    setSlash(null);
+    if (item.id === "image" || item.id === "file") {
+      pendingAttachRef.current = { from: s.from, to: s.to };
       item.action(ed);
-    },
-    [],
-  );
+      return;
+    }
+    ed.chain().focus().deleteRange({ from: s.from, to: s.to }).run();
+    item.action(ed);
+  }, []);
 
   const slashHandlers = useRef({ run: runSlash });
   slashHandlers.current = { run: runSlash };
@@ -362,30 +332,22 @@ export function NoteEditor({
     return () => document.removeEventListener("mousedown", onDown);
   }, [slash]);
 
-  const flush = useCallback(async () => {
-    if (!dirtyRef.current) return;
-    dirtyRef.current = false;
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    setStatus("saving");
+  const flush = useCallback(() => {
     const html = editorRef.current?.getHTML() ?? "";
-    const ok = await update(note.id, {
-      title: titleRef.current.trim() || "Untitled",
-      body_html: html,
-      tags: formatTags(tagsRef.current),
-    });
-    setStatus(ok ? "saved" : "error");
-    if (ok) onChanged();
-  }, [update, note.id, onChanged]);
+    if (!dirtyRef.current || html === lastSavedRef.current) return;
+    dirtyRef.current = false;
+    lastSavedRef.current = html;
+    setStatus("saving");
+    onSaveRef.current(html);
+    setStatus("saved");
+  }, []);
 
   const scheduleSave = useCallback(() => {
     dirtyRef.current = true;
-    if (status !== "saving") setStatus("idle");
+    setStatus("idle");
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = window.setTimeout(() => void flush(), 700);
-  }, [flush, status]);
+    timerRef.current = window.setTimeout(() => void flush(), autosaveMs);
+  }, [flush, autosaveMs]);
 
   const editor = useEditor({
     extensions: [
@@ -396,13 +358,13 @@ export function NoteEditor({
       TaskItem.configure({ nested: true }),
       Image.configure({ allowBase64: true }),
       FileAttachment,
-      Placeholder.configure({ placeholder: "Type / for commands, or write anything…" }),
+      Placeholder.configure({ placeholder }),
     ],
-    content: initialHtml(note),
+    content: initialHtml,
     autofocus: false,
     editorProps: {
       attributes: {
-        class: "note-body min-h-[40vh] focus:outline-none",
+        class: "note-body min-h-[10rem] focus:outline-none",
       },
     },
     onUpdate: () => {
@@ -460,46 +422,13 @@ export function NoteEditor({
 
   useEffect(() => {
     return () => {
-      if (dirtyRef.current && timerRef.current) {
-        clearTimeout(timerRef.current);
-        void flush();
-      }
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (dirtyRef.current) flush();
     };
   }, [flush]);
 
-  const confirmDelete = async () => {
-    const ok = await remove(note.id);
-    if (ok) onDeleted(note.id);
-  };
-
-  const doExport = async (fmt: "md" | "html" | "txt") => {
-    setExportOpen(false);
-    const title = titleRef.current.trim() || "Untitled";
-    const html = editorRef.current?.getHTML() ?? "";
-    const name = sanitizeName(title);
-    if (fmt === "md") {
-      await saveText(`${name}.md`, noteToMarkdown({ ...note, title, body_html: html }));
-    } else if (fmt === "html") {
-      await saveText(`${name}.html`, noteToHtml({ ...note, title, body_html: html }), "text/html;charset=utf-8");
-    } else {
-      await saveText(`${name}.txt`, noteToText({ ...note, title, body_html: html }));
-    }
-  };
-
-  const addTag = () => {
-    const value = tagInput.trim();
-    if (!value) return;
-    setTagInput("");
-    setTags((prev) => mergeTags(prev, [value]));
-    scheduleSave();
-  };
-
-  const removeTag = (tag: string) => {
-    setTags((prev) => prev.filter((t) => t.toLowerCase() !== tag.toLowerCase()));
-    scheduleSave();
-  };
-
-  const attachPicked = (file: File, kind: "image" | "file") => {    const reader = new FileReader();
+  const attachPicked = (file: File, kind: "image" | "file") => {
+    const reader = new FileReader();
     reader.onload = () => {
       const pending = pendingAttachRef.current;
       const ed = editorRef.current;
@@ -522,88 +451,15 @@ export function NoteEditor({
   };
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-slate-200 px-6 py-2.5">
-        <Button variant="ghost" onClick={onBack}>← All notes</Button>
-        <span className="flex-1" />
-        <span className={`text-xs ${status === "error" ? "text-rose-600" : "text-slate-500"}`}>
-          {status === "saving" ? "Saving…" : status === "saved" ? "Saved" : status === "error" ? "Save failed" : ""}
+    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div className="flex items-center justify-between border-b border-slate-200 px-2">
+        <Toolbar editor={editor} />
+        <span className={`shrink-0 pr-1 text-[10px] ${status === "saved" ? "text-slate-400" : "text-transparent"}`}>
+          Saved
         </span>
-        <div className="relative">
-          <button
-            type="button"
-            title="Export note"
-            onClick={() => setExportOpen((o) => !o)}
-            className="rounded-md p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-          </button>
-          {exportOpen && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setExportOpen(false)} />
-              <div className="absolute right-0 top-full z-50 mt-1 w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-2xl">
-                <button
-                  type="button"
-                  onClick={() => void doExport("md")}
-                  className="block w-full px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  Markdown (.md)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void doExport("html")}
-                  className="block w-full px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  HTML (.html)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void doExport("txt")}
-                  className="block w-full px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  Plain text (.txt)
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-        <DeleteButton onConfirm={() => void confirmDelete()} />
       </div>
-      <Toolbar editor={editor} />
-      <div className="relative mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-6 py-6">
-        <input
-          value={title}
-          onChange={(e) => {
-            setTitle(e.target.value);
-            scheduleSave();
-          }}
-          onBlur={() => void flush()}
-          placeholder="Untitled"
-          className="w-full bg-transparent text-3xl font-bold text-slate-900 placeholder-slate-400 outline-none"
-        />
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <TagPills tags={tags} onRemove={removeTag} max={50} />
-          <input
-            value={tagInput}
-            onChange={(e) => setTagInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === ",") {
-                e.preventDefault();
-                addTag();
-              }
-            }}
-            onBlur={addTag}
-            placeholder={tags.length ? "Add a tag…" : "Add tags (e.g. WSL, Project 1)…"}
-            className="w-48 bg-transparent text-xs text-slate-600 placeholder-slate-400 outline-none"
-          />
-        </div>
-        <div className="mt-4">
-          <EditorContent editor={editor} />
-        </div>
+      <div className="relative px-4 py-3">
+        <EditorContent editor={editor} />
         {slash && (
           <div
             ref={popupRef}

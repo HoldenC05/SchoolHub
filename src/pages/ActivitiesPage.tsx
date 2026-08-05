@@ -29,7 +29,7 @@ export function ActivitiesPage({
     <div className="mx-auto max-w-3xl space-y-6">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-100">Activities</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Activities</h1>
           <p className="text-sm text-slate-400">Clubs, teams, and everything you do</p>
         </div>
         <Button onClick={() => setModalOpen(true)}>+ Add activity</Button>
@@ -51,7 +51,7 @@ export function ActivitiesPage({
                   {a.icon || a.name.charAt(0).toUpperCase()}
                 </span>
                 <span className="min-w-0">
-                  <span className="block truncate font-medium text-slate-100">{a.name}</span>
+                  <span className="block truncate font-medium text-slate-900">{a.name}</span>
                   <span className="block text-sm text-slate-500">{a.category || "Activity"}</span>
                 </span>
               </button>
@@ -178,7 +178,7 @@ function ActivityModal({
                 type="button"
                 onClick={() => setIcon(i)}
                 className={`flex h-8 w-8 items-center justify-center rounded-lg text-base transition-colors ${
-                  icon === i ? "bg-indigo-500/20 ring-1 ring-indigo-400" : "hover:bg-slate-800"
+                  icon === i ? "bg-indigo-100 ring-1 ring-indigo-300" : "hover:bg-slate-100"
                 }`}
               >
                 {i}

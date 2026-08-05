@@ -6,6 +6,7 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use axum::extract::DefaultBodyLimit;
 use base64::Engine;
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -226,6 +227,7 @@ pub async fn serve(db: db::Db, token: String, dist: PathBuf) {
     let app = Router::new()
         .fallback_service(ServeDir::new(&dist).not_found_service(ServeFile::new(index)))
         .merge(api_router(state))
+        .layer(DefaultBodyLimit::max(1024 * 1024 * 1024))
         .layer(CorsLayer::permissive());
 
     let listener = match tokio::net::TcpListener::bind(format!("0.0.0.0:{PORT}")).await {

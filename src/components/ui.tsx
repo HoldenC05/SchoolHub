@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`rounded-xl border border-slate-800 bg-slate-900/60 p-4 ${className}`}>
+    <div className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${className}`}>
       {children}
     </div>
   );
@@ -27,8 +27,8 @@ export function Button({
   const styles = {
     primary:
       "bg-indigo-500 hover:bg-indigo-400 text-white shadow-sm",
-    ghost: "bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700",
-    danger: "bg-rose-900/60 hover:bg-rose-800 text-rose-200 border border-rose-800",
+    ghost: "bg-white hover:bg-slate-100 text-slate-700 border border-slate-300",
+    danger: "bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200",
   }[variant];
   return (
     <button
@@ -50,7 +50,7 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="flex flex-col gap-1 text-xs font-medium text-slate-400">
+    <label className="flex flex-col gap-1 text-xs font-medium text-slate-500">
       {label}
       {children}
     </label>
@@ -58,7 +58,7 @@ export function Field({
 }
 
 export const inputStyles =
-  "rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 placeholder-slate-500 outline-none focus:border-indigo-500";
+  "rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-indigo-500";
 
 export function TextInput({
   value,
@@ -128,7 +128,7 @@ export function IconButton({
     <button
       onClick={onClick}
       title={title}
-      className={`rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200 ${className}`}
+      className={`rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 ${className}`}
     >
       {children}
     </button>
@@ -156,7 +156,7 @@ export function DeleteButton({ onConfirm }: { onConfirm: () => void }) {
       className={`rounded-md p-1.5 transition-colors ${
         armed
           ? "bg-rose-500 text-white"
-          : "text-slate-400 hover:bg-rose-900/40 hover:text-rose-300"
+          : "text-slate-400 hover:bg-rose-50 hover:text-rose-500"
       }`}
     >
       {armed ? "Confirm?" : "✕"}
@@ -187,18 +187,18 @@ export function Modal({
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 animate-fade-in"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl animate-modal-in"
+        className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-2xl animate-modal-in"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-100">{title}</h2>
+          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
           <button
             onClick={onClose}
-            className="rounded-md p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+            className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -213,10 +213,10 @@ export function Modal({
 
 export function EmptyState({ icon, title, hint }: { icon: string; title: string; hint?: string }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-800 py-12 text-center">
+    <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 py-12 text-center">
       <span className="text-3xl">{icon}</span>
-      <p className="font-medium text-slate-300">{title}</p>
-      {hint && <p className="text-sm text-slate-500">{hint}</p>}
+      <p className="font-medium text-slate-600">{title}</p>
+      {hint && <p className="text-sm text-slate-400">{hint}</p>}
     </div>
   );
 }

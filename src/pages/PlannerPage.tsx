@@ -54,8 +54,8 @@ export function PlannerPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <header>
-        <h1 className="text-2xl font-bold text-slate-100">Planner</h1>
-        <p className="text-sm text-slate-400">Everything on your horizon</p>
+        <h1 className="text-2xl font-bold text-slate-900">Planner</h1>
+        <p className="text-sm text-slate-500">Everything on your horizon</p>
       </header>
 
       {upcoming.length === 0 ? (
@@ -75,12 +75,12 @@ export function PlannerPage() {
                         : "✏️"}
                 </span>
                 <div>
-                  <p className="font-medium text-slate-100">{item.title}</p>
+                  <p className="font-medium text-slate-900">{item.title}</p>
                   <p className="text-xs text-slate-500">{fmt(item.when)}</p>
                 </div>
               </div>
               {item.label && (
-                <span className="text-xs font-medium text-indigo-300">{item.label}</span>
+                <span className="text-xs font-medium text-indigo-600">{item.label}</span>
               )}
             </Card>
           ))}

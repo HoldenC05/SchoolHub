@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, getToken, isTauri, setToken, UnpairedError } from "./lib/api";
 import { useData } from "./lib/useData";
-import type { Activity } from "./lib/types";
+import type { Activity, AppSettings } from "./lib/types";
 import type { Nav } from "./lib/nav";
+import { applyAccent } from "./lib/theme";
 import { Sidebar } from "./components/Sidebar";
 import { PairingScreen } from "./components/PairingScreen";
 import { TodayPage } from "./pages/TodayPage";
@@ -12,13 +14,17 @@ import { CalendarPage } from "./pages/CalendarPage";
 import { PlannerPage } from "./pages/PlannerPage";
 import { ClassesPage } from "./pages/ClassesPage";
 import { HomeworkTestsPage } from "./pages/HomeworkTestsPage";
+import { TasksHubPage } from "./pages/TasksHubPage";
+import { TimeTrackerPage } from "./pages/TimeTrackerPage";
 import { IdeasPage } from "./pages/IdeasNotesPage";
 import NotesPage from "./pages/NotesPage";
 import { ActivitiesPage } from "./pages/ActivitiesPage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { CoursePage } from "./pages/CoursePage";
 import { IntegrationsPage } from "./pages/IntegrationsPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { RunningTimer } from "./components/RunningTimer";
 
 function App() {
   const [nav, setNav] = useState<Nav>("today");
@@ -61,6 +67,20 @@ function App() {
   }, [checkPairing]);
 
   const activities = useData<Activity[]>("/api/activities");
+  const settings = useData<AppSettings[]>("/api/settings");
+  const appSettings = settings.data?.[0] ?? null;
+  const appName = appSettings?.app_name || "School Hub";
+
+  useEffect(() => {
+    if (appSettings?.accent) applyAccent(appSettings.accent);
+  }, [appSettings?.accent]);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    getCurrentWindow()
+      .setTitle(appName)
+      .catch(() => {});
+  }, [appName]);
 
   const navigate = useCallback((n: Nav) => {
     setNav(n);
@@ -86,6 +106,8 @@ function App() {
   else if (nav === "classes")
     page = <ClassesPage onOpenCourse={(id) => navigate({ kind: "course", id })} />;
   else if (nav === "homework") page = <HomeworkTestsPage />;
+  else if (nav === "tasks") page = <TasksHubPage />;
+  else if (nav === "tracker") page = <TimeTrackerPage />;
   else if (nav === "notes")
     page = (
       <NotesPage
@@ -98,6 +120,7 @@ function App() {
   else if (nav === "activities")
     page = <ActivitiesPage onOpenActivity={(id) => navigate({ kind: "activity", id })} />;
   else if (nav === "integrations") page = <IntegrationsPage />;
+  else if (nav === "settings") page = <SettingsPage />;
   else if (typeof nav === "object" && nav.kind === "course")
     page = <CoursePage courseId={nav.id} onOpenNote={(id) => navigate({ kind: "note", id })} />;
   else if (typeof nav === "object" && nav.kind === "note")
@@ -123,30 +146,33 @@ function App() {
             onNavigate={navigate}
             activities={activities.data}
             onAddActivity={() => navigate("activities")}
+            appName={appName}
           />
         </div>
 
         {mobileNavOpen && (
           <div
-            className="fixed inset-0 z-30 bg-black/50 md:hidden"
+            className="fixed inset-0 z-30 bg-slate-900/40 md:hidden"
             onClick={() => setMobileNavOpen(false)}
           />
         )}
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex items-center gap-3 border-b border-slate-800 bg-slate-950/80 px-4 py-3 md:hidden">
+          <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 md:hidden">
             <button
               onClick={() => setMobileNavOpen(true)}
-              className="rounded-md p-1 text-slate-400 hover:bg-slate-800"
+              className="rounded-md p-1 text-slate-400 hover:bg-slate-100"
             >
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                 <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
               </svg>
             </button>
-            <span className="font-semibold text-slate-100">School Hub</span>
+            <span className="font-semibold text-slate-900">{appName}</span>
           </div>
           <main className="flex-1 overflow-y-auto p-5 pb-12 md:p-8">{page}</main>
         </div>
+
+        <RunningTimer onOpen={() => navigate("tracker")} />
       </div>
     </ErrorBoundary>
   );

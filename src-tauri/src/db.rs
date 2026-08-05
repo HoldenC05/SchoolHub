@@ -184,6 +184,49 @@ const MIGRATIONS: &[&str] = &[
     );",
     "ALTER TABLE notes ADD COLUMN parent_id INTEGER REFERENCES notes(id) ON DELETE SET NULL;
     ALTER TABLE notes ADD COLUMN body_html TEXT;",
+    "CREATE TABLE IF NOT EXISTS project_tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        done INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );",
+    "CREATE TABLE IF NOT EXISTS settings (
+        id INTEGER PRIMARY KEY,
+        app_name TEXT NOT NULL DEFAULT 'School Hub',
+        accent TEXT NOT NULL DEFAULT 'indigo',
+        today_hidden_calendars TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );",
+    "ALTER TABLE notes ADD COLUMN tags TEXT NOT NULL DEFAULT '[]';",
+    "CREATE TABLE IF NOT EXISTS todos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT,
+        entity_id INTEGER,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'todo',
+        priority INTEGER NOT NULL DEFAULT 1,
+        due_at TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS time_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT,
+        entity_id INTEGER,
+        label TEXT,
+        started_at TEXT NOT NULL,
+        ended_at TEXT,
+        duration_seconds INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    INSERT INTO todos (entity_type, entity_id, title, status, priority, created_at, updated_at)
+        SELECT 'project', project_id, title, CASE WHEN done THEN 'done' ELSE 'todo' END, 1, created_at, updated_at FROM project_tasks;",
+    "ALTER TABLE todos ADD COLUMN position INTEGER NOT NULL DEFAULT 0;",
 ];
 
 pub fn init(path: &Path) -> rusqlite::Result<Db> {
@@ -194,6 +237,7 @@ pub fn init(path: &Path) -> rusqlite::Result<Db> {
     let _ = conn.pragma_update(None, "journal_mode", "WAL");
     let _ = conn.pragma_update(None, "foreign_keys", "ON");
     migrate(&conn)?;
+    let _ = conn.execute("INSERT OR IGNORE INTO settings (id) VALUES (1)", []);
     Ok(Arc::new(Mutex::new(conn)))
 }
 
@@ -256,9 +300,18 @@ pub const TABLES: &[(&str, &[&str])] = &[
         "projects",
         &["activity_id", "course_id", "title", "status", "deadline", "notes"],
     ),
+    ("project_tasks", &["project_id", "title", "done"]),
+    (
+        "todos",
+        &["entity_type", "entity_id", "title", "status", "priority", "due_at", "notes", "position"],
+    ),
+    (
+        "time_entries",
+        &["entity_type", "entity_id", "label", "started_at", "ended_at", "duration_seconds"],
+    ),
     (
         "notes",
-        &["entity_type", "entity_id", "parent_id", "title", "body_md", "body_html"],
+        &["entity_type", "entity_id", "parent_id", "title", "body_md", "body_html", "tags"],
     ),
     (
         "files",
@@ -267,6 +320,7 @@ pub const TABLES: &[(&str, &[&str])] = &[
     ("ideas", &["title", "body", "done"]),
     ("tags", &["name"]),
     ("calendar_events", &[]),
+    ("settings", &["app_name", "accent", "today_hidden_calendars"]),
 ];
 
 pub fn table_columns(table: &str) -> Option<&'static [&'static str]> {
@@ -359,9 +413,24 @@ fn extract_fields(payload: &Json, allowed: &[&str]) -> (Vec<String>, Vec<SqlValu
 
 pub fn insert(conn: &Connection, table: &str, payload: &Json) -> Result<Json, String> {
     let allowed = table_columns(table).ok_or_else(|| format!("unknown table: {table}"))?;
-    let (columns, values) = extract_fields(payload, allowed);
+    let (mut columns, mut values) = extract_fields(payload, allowed);
     if columns.is_empty() {
         return Err("no valid fields provided".into());
+    }
+    if table == "todos" && !columns.iter().any(|c| c == "position") {
+        let status = payload
+            .get("status")
+            .and_then(|s| s.as_str())
+            .unwrap_or("todo");
+        let next: i64 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(position), -1) + 1 FROM todos WHERE status = ?1",
+                [status],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        columns.push("position".to_string());
+        values.push(SqlValue::Integer(next));
     }
     let placeholders = vec!["?"; columns.len()].join(",");
     let sql = format!(
@@ -419,6 +488,7 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         conn.pragma_update(None, "foreign_keys", "ON").unwrap();
         migrate(&conn).unwrap();
+        conn.execute("INSERT OR IGNORE INTO settings (id) VALUES (1)", []).unwrap();
         conn
     }
 
@@ -438,6 +508,8 @@ mod tests {
             "calendar_links",
             "calendar_events",
             "files",
+            "project_tasks",
+            "settings",
         ];
         let mut stmt = conn
             .prepare("SELECT name FROM sqlite_master WHERE type='table'")

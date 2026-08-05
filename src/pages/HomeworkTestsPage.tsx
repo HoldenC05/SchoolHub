@@ -3,6 +3,7 @@ import { useData, useCreate, useUpdate, useDelete } from "../lib/useData";
 import { toLocalInput } from "../lib/datetime";
 import type { Assignment, AssignmentKind, AssignmentStatus, Course } from "../lib/types";
 import { KIND_LABELS, STATUS_LABELS } from "../lib/types";
+import { TodoList } from "../components/TodoList";
 import {
   Button,
   Card,
@@ -117,7 +118,7 @@ function AssignmentModal({
         <Field label="Due date">
           <input type="datetime-local" className={inputStyles} value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
         </Field>
-        {error && <p className="text-xs text-rose-400">{error.message}</p>}
+        {error && <p className="text-xs text-rose-600">{error.message}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button type="submit">{editing ? "Save" : "Add"}</Button>
@@ -135,6 +136,7 @@ export function HomeworkTestsPage() {
   const [filter, setFilter] = useState<"all" | AssignmentKind>("all");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Assignment | null>(null);
+  const [expanded, setExpanded] = useState<number | null>(null);
 
   const courseName = (id: number | null) =>
     courses?.find((c) => c.id === id)?.name || null;
@@ -149,17 +151,17 @@ export function HomeworkTestsPage() {
 
   const statusColor = (s: AssignmentStatus) =>
     s === "done" || s === "graded"
-      ? "bg-emerald-500/15 text-emerald-300"
+      ? "bg-emerald-50 text-emerald-600"
       : s === "in_progress"
-        ? "bg-sky-500/15 text-sky-300"
-        : "bg-slate-800 text-slate-400";
+        ? "bg-sky-50 text-sky-700"
+        : "bg-slate-100 text-slate-500";
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-100">Homework & Tests</h1>
-          <p className="text-sm text-slate-400">Track everything that's due</p>
+          <h1 className="text-2xl font-bold text-slate-900">Homework & Tests</h1>
+          <p className="text-sm text-slate-500">Track everything that's due</p>
         </div>
         <Button onClick={() => setModalOpen(true)}>+ Add</Button>
       </header>
@@ -170,7 +172,7 @@ export function HomeworkTestsPage() {
             key={k}
             onClick={() => setFilter(k)}
             className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${
-              filter === k ? "bg-indigo-500 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+              filter === k ? "bg-indigo-500 text-white" : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
             }`}
           >
             {k === "all" ? "All" : KIND_LABELS[k]}
@@ -185,64 +187,80 @@ export function HomeworkTestsPage() {
       ) : (
         <div className="space-y-2">
           {visible.map((a) => (
-            <Card key={a.id} className="group flex items-center justify-between gap-3">
-              <button onClick={() => cycleStatus(a)} className="flex min-w-0 flex-1 items-center gap-3 text-left" title="Click to change status">
-                <span
-                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
-                    a.status === "done" || a.status === "graded"
-                      ? "border-emerald-400 bg-emerald-400/20"
-                      : "border-slate-600"
-                  }`}
-                >
-                  {(a.status === "done" || a.status === "graded") && (
-                    <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
-                      <path d="M1.5 5.5l2.5 2.5 4.5-5" stroke="#34d399" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  )}
-                </span>
-                <span className="min-w-0">
-                  <span className={`block truncate font-medium text-slate-100 ${a.status === "done" || a.status === "graded" ? "line-through opacity-60" : ""}`}>
-                    {a.title}
+            <div key={a.id}>
+              <Card className="group flex items-center justify-between gap-3">
+                <button onClick={() => cycleStatus(a)} className="flex min-w-0 flex-1 items-center gap-3 text-left" title="Click to change status">
+                  <span
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                      a.status === "done" || a.status === "graded"
+                        ? "border-emerald-500 bg-emerald-100"
+                        : "border-slate-300"
+                    }`}
+                  >
+                    {(a.status === "done" || a.status === "graded") && (
+                      <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
+                        <path d="M1.5 5.5l2.5 2.5 4.5-5" stroke="#34d399" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
                   </span>
-                  <span className="block text-xs text-slate-500">
-                    {courseName(a.course_id) || "No class"} · {fmtDue(a.due_at)}
+                  <span className="min-w-0">
+                    <span className={`block truncate font-medium text-slate-900 ${a.status === "done" || a.status === "graded" ? "line-through opacity-60" : ""}`}>
+                      {a.title}
+                    </span>
+                    <span className="block text-xs text-slate-500">
+                      {courseName(a.course_id) || "No class"} · {fmtDue(a.due_at)}
+                    </span>
                   </span>
-                </span>
-              </button>
-              <div className="flex shrink-0 items-center gap-1.5">
-                <Pill
-                  className={
-                    a.kind === "test"
-                      ? "bg-rose-500/15 text-rose-300"
-                      : a.kind === "project"
-                        ? "bg-amber-500/15 text-amber-300"
-                        : "bg-sky-500/15 text-sky-300"
-                  }
-                >
-                  {KIND_LABELS[a.kind]}
-                </Pill>
-                <button onClick={() => cycleStatus(a)} title="Change status" className={`rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${statusColor(a.status)}`}>
-                  {STATUS_LABELS[a.status]}
                 </button>
-                <IconButton
-                  title="Edit"
-                  onClick={() => {
-                    setEditing(a);
-                    setModalOpen(true);
-                  }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                    <path d="M11 2.5l2.5 2.5L6 12.5 3 13l.5-3L11 2.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-                  </svg>
-                </IconButton>
-                <DeleteButton
-                  onConfirm={async () => {
-                    await remove(a.id);
-                    refresh();
-                  }}
-                />
-              </div>
-            </Card>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <Pill
+                    className={
+                      a.kind === "test"
+                        ? "bg-rose-50 text-rose-600"
+                        : a.kind === "project"
+                          ? "bg-amber-50 text-amber-700"
+                          : "bg-sky-50 text-sky-700"
+                    }
+                  >
+                    {KIND_LABELS[a.kind]}
+                  </Pill>
+                  <button onClick={() => cycleStatus(a)} title="Change status" className={`rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${statusColor(a.status)}`}>
+                    {STATUS_LABELS[a.status]}
+                  </button>
+                  <IconButton
+                    title={expanded === a.id ? "Hide to-dos" : "Show to-dos"}
+                    onClick={() => setExpanded(expanded === a.id ? null : a.id)}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                      <path d="M5.5 3.5h8M5.5 8h8M5.5 12.5h8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                      <path d="M2.5 3.5h.01M2.5 8h.01M2.5 12.5h.01" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+                    </svg>
+                  </IconButton>
+                  <IconButton
+                    title="Edit"
+                    onClick={() => {
+                      setEditing(a);
+                      setModalOpen(true);
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                      <path d="M11 2.5l2.5 2.5L6 12.5 3 13l.5-3L11 2.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                    </svg>
+                  </IconButton>
+                  <DeleteButton
+                    onConfirm={async () => {
+                      await remove(a.id);
+                      refresh();
+                    }}
+                  />
+                </div>
+              </Card>
+              {expanded === a.id && (
+                <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <TodoList entityType="assignment" entityId={a.id} />
+                </div>
+              )}
+            </div>
           ))}
         </div>
       )}

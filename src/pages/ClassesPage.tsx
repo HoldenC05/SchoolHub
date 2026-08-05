@@ -75,20 +75,20 @@ function CourseModal({
           <TextInput value={term} onChange={setTerm} placeholder="e.g. Fall 2026" />
         </Field>
         <div>
-          <p className="mb-1 text-xs font-medium text-slate-400">Color</p>
+          <p className="mb-1 text-xs font-medium text-slate-500">Color</p>
           <div className="flex gap-2">
             {COLOR_OPTIONS.map((c) => (
               <button
                 key={c}
                 type="button"
                 onClick={() => setColor(c)}
-                className={`h-6 w-6 rounded-full transition-transform ${color === c ? "scale-110 ring-2 ring-white" : ""}`}
+                className={`h-6 w-6 rounded-full transition-transform ${color === c ? "scale-110 ring-2 ring-slate-300" : ""}`}
                 style={{ backgroundColor: c }}
               />
             ))}
           </div>
         </div>
-        {error && <p className="text-xs text-rose-400">{error.message}</p>}
+        {error && <p className="text-xs text-rose-600">{error.message}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button type="submit">{editing ? "Save" : "Add class"}</Button>
@@ -108,8 +108,8 @@ export function ClassesPage({ onOpenCourse }: { onOpenCourse: (id: number) => vo
     <div className="mx-auto max-w-3xl space-y-6">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-100">Classes</h1>
-          <p className="text-sm text-slate-400">Your courses for the term</p>
+          <h1 className="text-2xl font-bold text-slate-900">Classes</h1>
+          <p className="text-sm text-slate-500">Your courses for the term</p>
         </div>
         <Button onClick={() => setModalOpen(true)}>+ Add class</Button>
       </header>
@@ -128,7 +128,7 @@ export function ClassesPage({ onOpenCourse }: { onOpenCourse: (id: number) => vo
                   style={{ backgroundColor: c.color || "#334155" }}
                 />
                 <span className="min-w-0 flex-1">
-                  <span className="block font-medium text-slate-100">{c.name}</span>
+                  <span className="block font-medium text-slate-900">{c.name}</span>
                   <span className="block text-sm text-slate-500">
                     {[c.teacher, c.term].filter(Boolean).join(" · ") || "No details yet"}
                   </span>

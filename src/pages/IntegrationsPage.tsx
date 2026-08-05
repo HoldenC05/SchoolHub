@@ -53,7 +53,7 @@ function CopyButton({ text }: { text: string }) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      className="rounded-md bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-300 hover:bg-slate-700"
+      className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200"
     >
       {copied ? "Copied ✓" : "Copy"}
     </button>
@@ -87,8 +87,8 @@ function CalendarPicker({
             key={c.href}
             className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 ${
               checked.has(c.href)
-                ? "border-indigo-500/50 bg-indigo-500/10"
-                : "border-slate-800 bg-slate-950/50"
+                ? "border-indigo-300 bg-indigo-50"
+                : "border-slate-200 bg-white"
             }`}
           >
             <input
@@ -97,10 +97,10 @@ function CalendarPicker({
               checked={checked.has(c.href)}
               onChange={() => onToggle(c.href)}
             />
-            <span className="min-w-0 flex-1 truncate text-sm text-slate-100">
+            <span className="min-w-0 flex-1 truncate text-sm text-slate-900">
               {c.name || c.href}
             </span>
-            <span className="flex items-center gap-1.5 text-xs text-slate-400">
+            <span className="flex items-center gap-1.5 text-xs text-slate-500">
               <input
                 type="radio"
                 name="push-target"
@@ -118,7 +118,7 @@ function CalendarPicker({
         <Button onClick={onSave} disabled={busy || checked.size === 0} className="disabled:opacity-50">
           {busy ? "Saving…" : "Use selected calendars"}
         </Button>
-        <button className="text-sm text-slate-400 underline" onClick={onCancel}>
+        <button className="text-sm text-slate-500 underline" onClick={onCancel}>
           Cancel
         </button>
       </div>
@@ -255,7 +255,7 @@ function CalendarSection() {
       <Card className="flex items-start gap-3">
         <span className="text-2xl">🍎</span>
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-slate-100">Apple Calendar (iCloud)</p>
+          <p className="font-medium text-slate-900">Apple Calendar (iCloud)</p>
           <p className="text-sm text-slate-500">
             Connected through your Mac. Events synced from iCloud appear in Today and Planner.
           </p>
@@ -270,7 +270,7 @@ function CalendarSection() {
         <span className="text-2xl">🍎</span>
         <div className="min-w-0 flex-1 space-y-3">
           <div>
-            <p className="font-medium text-slate-100">Apple Calendar (iCloud)</p>
+            <p className="font-medium text-slate-900">Apple Calendar (iCloud)</p>
             <p className="text-sm text-slate-500">
               Check the calendars to pull events from, then mark which one should receive your
               assignments (push).
@@ -289,7 +289,7 @@ function CalendarSection() {
               setError(null);
             }}
           />
-          {error && <p className="text-xs text-rose-400">{error}</p>}
+          {error && <p className="text-xs text-rose-600">{error}</p>}
         </div>
       </Card>
     );
@@ -302,40 +302,40 @@ function CalendarSection() {
         <span className="text-2xl">🍎</span>
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <p className="font-medium text-slate-100">Apple Calendar (iCloud)</p>
-            <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-300">
+            <p className="font-medium text-slate-900">Apple Calendar (iCloud)</p>
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-600">
               Connected
             </span>
           </div>
-          <p className="text-sm text-slate-400">{status.email}</p>
-          <p className="text-xs text-slate-400">
+          <p className="text-sm text-slate-500">{status.email}</p>
+          <p className="text-xs text-slate-500">
             Pulling from{" "}
-            <span className="text-slate-200">{names.length} calendar{names.length === 1 ? "" : "s"}</span>
+            <span className="text-slate-700">{names.length} calendar{names.length === 1 ? "" : "s"}</span>
             {names.length > 0 && <span className="text-slate-500"> — {names.join(", ")}</span>}
           </p>
           {status.push_calendar && (
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-500">
               Assignments push to{" "}
-              <span className="text-slate-200">{status.push_calendar.name || status.push_calendar.href}</span>
+              <span className="text-slate-700">{status.push_calendar.name || status.push_calendar.href}</span>
             </p>
           )}
           {!status.push_calendar && (
-            <p className="text-xs text-amber-300/90">No push target — assignments aren't sent to iCloud.</p>
+            <p className="text-xs text-amber-600">No push target — assignments aren't sent to iCloud.</p>
           )}
           {status.last_sync_at && (
             <p className="text-xs text-slate-500">Last synced {status.last_sync_at}</p>
           )}
           {status.last_sync_error && (
-            <p className="text-xs text-rose-400">Last sync failed: {status.last_sync_error}</p>
+            <p className="text-xs text-rose-600">Last sync failed: {status.last_sync_error}</p>
           )}
           {syncResult && (
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-500">
               Sync complete — {syncResult.pushed} pushed, {syncResult.pulled} pulled
               {syncResult.events_removed > 0 ? `, ${syncResult.events_removed} removed` : ""}.
               {syncResult.error ? ` Error: ${syncResult.error}` : ""}
             </p>
           )}
-          {error && <p className="text-xs text-rose-400">{error}</p>}
+          {error && <p className="text-xs text-rose-600">{error}</p>}
           <div className="flex flex-wrap gap-2">
             <Button onClick={syncNow} disabled={busy} className="disabled:opacity-50">
               {busy ? "Syncing…" : "Sync now"}
@@ -357,12 +357,12 @@ function CalendarSection() {
       <span className="text-2xl">🍎</span>
       <div className="min-w-0 flex-1 space-y-3">
         <div>
-          <p className="font-medium text-slate-100">Apple Calendar (iCloud)</p>
+          <p className="font-medium text-slate-900">Apple Calendar (iCloud)</p>
           <p className="text-sm text-slate-500">
             Pull events from as many calendars as you like, and pick one to push assignments into.
             Use an app-specific password from{" "}
             <a
-              className="text-indigo-300 underline"
+              className="text-indigo-600 underline"
               href="https://appleid.apple.com"
               target="_blank"
               rel="noreferrer"
@@ -379,7 +379,7 @@ function CalendarSection() {
           <Field label="App-specific password">
             <TextInput value={password} onChange={setPassword} placeholder="xxxx-xxxx-xxxx-xxxx" />
           </Field>
-          {error && <p className="text-xs text-rose-400">{error}</p>}
+          {error && <p className="text-xs text-rose-600">{error}</p>}
           <div>
             <Button onClick={connect} disabled={busy || !email || !password} className="disabled:opacity-50">
               {busy ? "Connecting…" : "Connect"}
@@ -439,14 +439,14 @@ export function IntegrationsPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <header>
-        <h1 className="text-2xl font-bold text-slate-100">Integrations</h1>
-        <p className="text-sm text-slate-400">Connect School Hub to your world</p>
+        <h1 className="text-2xl font-bold text-slate-900">Integrations</h1>
+        <p className="text-sm text-slate-500">Connect School Hub to your world</p>
       </header>
 
       {isTauri() && (
         <Card className="border-emerald-500/30">
-          <h2 className="mb-1 font-semibold text-slate-100">Pair your phone</h2>
-          <p className="mb-4 text-sm text-slate-400">
+          <h2 className="mb-1 font-semibold text-slate-900">Pair your phone</h2>
+          <p className="mb-4 text-sm text-slate-500">
             Open your iPhone camera and point it at the QR code — it takes you straight to School
             Hub and connects automatically.
           </p>
@@ -455,17 +455,17 @@ export function IntegrationsPage() {
               {qrDataUrl ? (
                 <img src={qrDataUrl} alt="Pairing QR code" className="h-52 w-52" />
               ) : (
-                <div className="flex h-52 w-52 items-center justify-center text-sm text-slate-400">
+                <div className="flex h-52 w-52 items-center justify-center text-sm text-slate-500">
                   Preparing…
                 </div>
               )}
             </div>
             <div className="min-w-0 flex-1 space-y-3">
               <div>
-                <p className="mb-1 text-xs font-medium text-slate-400">Phone URL</p>
+                <p className="mb-1 text-xs font-medium text-slate-500">Phone URL</p>
                 {phoneUrl ? (
                   <div className="flex items-center gap-2">
-                    <code className="min-w-0 flex-1 truncate rounded-lg bg-slate-950 px-3 py-2 text-sm text-emerald-300">
+                    <code className="min-w-0 flex-1 truncate rounded-lg bg-slate-100 px-3 py-2 text-sm text-emerald-600">
                       {phoneUrl}
                     </code>
                     <CopyButton text={phoneUrl} />
@@ -475,11 +475,11 @@ export function IntegrationsPage() {
                 )}
               </div>
               <div>
-                <p className="mb-1 text-xs font-medium text-slate-400">
+                <p className="mb-1 text-xs font-medium text-slate-500">
                   Or manually — pairing token
                 </p>
                 <div className="flex items-center gap-2">
-                  <code className="min-w-0 flex-1 truncate rounded-lg bg-slate-950 px-3 py-2 text-sm text-indigo-300">
+                  <code className="min-w-0 flex-1 truncate rounded-lg bg-slate-100 px-3 py-2 text-sm text-indigo-600">
                     {token || "Reading…"}
                   </code>
                   {token && <CopyButton text={token} />}
@@ -488,7 +488,7 @@ export function IntegrationsPage() {
             </div>
           </div>
           <p className="mt-3 text-xs text-slate-500">
-            Server runs on <code className="text-slate-300">http://127.0.0.1:8787</code> — it
+            Server runs on <code className="text-slate-600">http://127.0.0.1:8787</code> — it
             listens on all interfaces so your phone can reach it over Tailscale. Your Mac must be on
             and awake.
           </p>
@@ -497,8 +497,8 @@ export function IntegrationsPage() {
 
       {!isTauri() && (
         <Card>
-          <h2 className="font-semibold text-slate-100">You're connected</h2>
-          <p className="text-sm text-slate-400">
+          <h2 className="font-semibold text-slate-900">You're connected</h2>
+          <p className="text-sm text-slate-500">
             This device is paired to your Mac's School Hub. Data is read and written through the
             app running on your Mac.
           </p>
@@ -516,8 +516,8 @@ export function IntegrationsPage() {
               <span className="text-2xl">{i.icon}</span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="font-medium text-slate-100">{i.name}</p>
-                  <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-400">
+                  <p className="font-medium text-slate-900">{i.name}</p>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
                     {i.status}
                   </span>
                 </div>

@@ -1,16 +1,38 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 
+const cache = new Map<string, unknown>();
+const inflight = new Map<string, Promise<unknown>>();
+
+export function invalidateCache(path: string) {
+  cache.delete(path);
+  for (const key of cache.keys()) {
+    if (key.startsWith(`${path}/`)) cache.delete(key);
+  }
+}
+
 export function useData<T>(path: string, reloadKey = 0) {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<T | null>(() => (cache.get(path) as T) ?? null);
+  const [loading, setLoading] = useState(() => !cache.has(path));
   const [error, setError] = useState<Error | null>(null);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
     setError(null);
+    if (!cache.has(path)) setLoading(true);
+    let promise = inflight.get(path);
+    if (!promise) {
+      promise = api
+        .get<T>(path)
+        .then((d) => {
+          cache.set(path, d);
+          return d;
+        })
+        .finally(() => inflight.delete(path));
+      inflight.set(path, promise);
+    }
     try {
-      setData(await api.get<T>(path));
+      const d = await promise;
+      setData(d as T);
     } catch (e) {
       setError(e as Error);
     } finally {
@@ -32,6 +54,7 @@ export function useCreate<T>(path: string, onDone?: () => void) {
       setError(null);
       try {
         await api.create<T>(path, body);
+        invalidateCache(path);
         onDone?.();
       } catch (e) {
         setError(e as Error);
@@ -48,7 +71,9 @@ export function useUpdate<T>(path: string) {
     async (id: number, body: unknown): Promise<T | null> => {
       setError(null);
       try {
-        return await api.update<T>(`${path}/${id}`, body);
+        const row = await api.update<T>(`${path}/${id}`, body);
+        invalidateCache(path);
+        return row;
       } catch (e) {
         setError(e as Error);
         return null;
@@ -66,6 +91,7 @@ export function useDelete(path: string) {
       setError(null);
       try {
         await api.remove(`${path}/${id}`);
+        invalidateCache(path);
         return true;
       } catch (e) {
         setError(e as Error);

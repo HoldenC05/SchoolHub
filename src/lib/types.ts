@@ -77,6 +77,15 @@ export interface Project {
   updated_at: string;
 }
 
+export interface ProjectTask {
+  id: number;
+  project_id: number;
+  title: string;
+  done: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Note {
   id: number;
   entity_type: string | null;
@@ -85,6 +94,7 @@ export interface Note {
   title: string;
   body_md: string;
   body_html: string | null;
+  tags: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -94,6 +104,36 @@ export interface Idea {
   title: string;
   body: string | null;
   done: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type TodoStatus = "todo" | "in_progress" | "done";
+
+export interface Todo {
+  id: number;
+  entity_type: string | null;
+  entity_id: number | null;
+  title: string;
+  status: TodoStatus;
+  priority: number;
+  due_at: string | null;
+  notes: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type TimeCategory = "course" | "activity" | "other";
+
+export interface TimeEntry {
+  id: number;
+  entity_type: TimeCategory | null;
+  entity_id: number | null;
+  label: string | null;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number;
   created_at: string;
   updated_at: string;
 }
@@ -117,6 +157,15 @@ export interface CalendarEvent {
   rrule: string | null;
   recurrence_id: string | null;
   exdates: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AppSettings {
+  id: number;
+  app_name: string;
+  accent: string;
+  today_hidden_calendars: string;
   created_at: string;
   updated_at: string;
 }

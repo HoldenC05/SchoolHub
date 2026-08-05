@@ -1,8 +1,12 @@
 import { useMemo, useState } from "react";
 import { useData, useCreate, useUpdate, useDelete } from "../lib/useData";
-import { api } from "../lib/api";
+import { api, apiBase, getToken } from "../lib/api";
 import { toLocalInput } from "../lib/datetime";
 import { FilePreview } from "../components/FilePreview";
+import { formatTags, mergeTags, parseTags } from "../lib/tags";
+import { TagPills } from "../components/Tags";
+import { TodoList } from "../components/TodoList";
+import { TimeSection } from "../components/TimeSection";
 import type {
   Assignment,
   AssignmentKind,
@@ -12,6 +16,7 @@ import type {
   Meeting,
   Note,
   Project,
+  Todo,
 } from "../lib/types";
 import { KIND_LABELS, STATUS_LABELS } from "../lib/types";
 import {
@@ -28,7 +33,7 @@ import {
   inputStyles,
 } from "../components/ui";
 
-type SubTab = "overview" | "assignments" | "meetings" | "notes" | "files" | "projects";
+type SubTab = "overview" | "assignments" | "meetings" | "notes" | "files" | "projects" | "todos" | "time";
 
 function parseDate(s: string | null): Date | null {
   if (!s) return null;
@@ -68,11 +73,25 @@ const EditIcon = () => (
   </svg>
 );
 
+const NoteIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+    <path d="M3 1.5h8l2 2v11H3v-13z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+    <path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+  </svg>
+);
+
+const ListIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+    <path d="M5.5 3.5h8M5.5 8h8M5.5 12.5h8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    <path d="M2.5 3.5h.01M2.5 8h.01M2.5 12.5h.01" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+  </svg>
+);
+
 const KIND_COLOR: Record<AssignmentKind | "meeting", string> = {
-  homework: "bg-sky-500/15 text-sky-300",
-  test: "bg-rose-500/15 text-rose-300",
-  project: "bg-amber-500/15 text-amber-300",
-  meeting: "bg-indigo-500/15 text-indigo-300",
+  homework: "bg-sky-50 text-sky-700",
+  test: "bg-rose-50 text-rose-600",
+  project: "bg-amber-50 text-amber-700",
+  meeting: "bg-indigo-50 text-indigo-600",
 };
 
 const KIND_DOT: Record<AssignmentKind | "meeting", string> = {
@@ -92,6 +111,7 @@ export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenN
   const { data: notes, refresh: refreshNotes } = useData<Note[]>("/api/notes");
   const { data: files, refresh: refreshFiles } = useData<CourseFile[]>("/api/files");
   const [sub, setSub] = useState<SubTab>("overview");
+  const { data: todos, refresh: refreshTodos } = useData<Todo[]>("/api/todos");
   const [assignmentModal, setAssignmentModal] = useState<{ open: boolean; editing: Assignment | null }>({
     open: false,
     editing: null,
@@ -110,6 +130,7 @@ export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenN
   const myNotes =
     notes?.filter((n) => n.entity_type === "course" && n.entity_id === courseId) || [];
   const myFiles = (files || []).filter((f) => f.course_id === courseId) || [];
+  const myTodos = (todos || []).filter((t) => t.entity_type === "course" && t.entity_id === courseId) || [];
 
   const upcoming = myAssignments.filter(
     (a) => (a.status === "todo" || a.status === "in_progress") && a.due_at,
@@ -122,6 +143,9 @@ export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenN
     { key: "meetings", label: `Meetings (${myMeetings.length})` },
     { key: "notes", label: `Notes (${myNotes.length})` },
     { key: "files", label: `Files (${myFiles.length})` },
+    { key: "projects", label: `Projects (${myProjects.length})` },
+    { key: "todos", label: `To-Dos (${myTodos.length})` },
+    { key: "time", label: "Time" },
   ];
 
   return (
@@ -135,7 +159,7 @@ export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenN
             {course.name.charAt(0).toUpperCase()}
           </span>
           <div>
-            <h1 className="text-2xl font-bold text-slate-100">{course.name}</h1>
+            <h1 className="text-2xl font-bold text-slate-900">{course.name}</h1>
             <p className="text-sm text-slate-400">
               {[course.teacher, course.term].filter(Boolean).join(" · ") || "Course"}
             </p>
@@ -151,7 +175,7 @@ export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenN
             className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
               sub === t.key
                 ? "bg-indigo-500 text-white"
-                : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+                : "bg-white text-slate-500 hover:bg-slate-100 border border-slate-200"
             }`}
           >
             {t.label}
@@ -164,17 +188,17 @@ export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenN
           <ClassCalendar assignments={myAssignments} meetings={myMeetings} />
           {nextUp && (
             <Card className="border-indigo-500/30 bg-indigo-500/5">
-              <p className="text-xs font-semibold uppercase tracking-wider text-indigo-300">
+              <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">
                 Next up
               </p>
-              <p className="mt-1 font-medium text-slate-100">{nextUp.title}</p>
+              <p className="mt-1 font-medium text-slate-900">{nextUp.title}</p>
               <p className="text-sm text-slate-400">
                 {KIND_LABELS[nextUp.kind]} · {fmtDue(nextUp.due_at)}
               </p>
             </Card>
           )}
           {course.blackboard_url && (
-            <Card className="border-slate-700">
+            <Card className="border-slate-300">
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Blackboard
               </p>
@@ -182,7 +206,7 @@ export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenN
                 href={course.blackboard_url}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-1 block truncate text-sm font-medium text-indigo-300 hover:underline"
+                className="mt-1 block truncate text-sm font-medium text-indigo-600 hover:underline"
               >
                 {course.blackboard_url}
               </a>
@@ -190,31 +214,31 @@ export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenN
           )}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <Card>
-              <p className="text-2xl font-bold text-slate-100">
+              <p className="text-2xl font-bold text-slate-900">
                 {myAssignments.filter((a) => a.kind === "test").length}
               </p>
               <p className="text-sm text-slate-500">Tests</p>
             </Card>
             <Card>
-              <p className="text-2xl font-bold text-slate-100">
+              <p className="text-2xl font-bold text-slate-900">
                 {myAssignments.filter((a) => a.kind === "homework").length}
               </p>
               <p className="text-sm text-slate-500">Homework</p>
             </Card>
             <Card>
-              <p className="text-2xl font-bold text-slate-100">{myMeetings.length}</p>
+              <p className="text-2xl font-bold text-slate-900">{myMeetings.length}</p>
               <p className="text-sm text-slate-500">Meetings</p>
             </Card>
             <Card>
-              <p className="text-2xl font-bold text-slate-100">{myNotes.length}</p>
+              <p className="text-2xl font-bold text-slate-900">{myNotes.length}</p>
               <p className="text-sm text-slate-500">Notes</p>
             </Card>
             <Card>
-              <p className="text-2xl font-bold text-slate-100">{myFiles.length}</p>
+              <p className="text-2xl font-bold text-slate-900">{myFiles.length}</p>
               <p className="text-sm text-slate-500">Files</p>
             </Card>
             <Card>
-              <p className="text-2xl font-bold text-slate-100">{myProjects.length}</p>
+              <p className="text-2xl font-bold text-slate-900">{myProjects.length}</p>
               <p className="text-sm text-slate-500">Projects</p>
             </Card>
           </div>
@@ -230,7 +254,7 @@ export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenN
                   .map((a) => (
                     <Card key={a.id} className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="truncate font-medium text-slate-100">{a.title}</p>
+                        <p className="truncate font-medium text-slate-900">{a.title}</p>
                         <p className="text-xs text-slate-500">{fmtDue(a.due_at)}</p>
                       </div>
                       <Pill className={KIND_COLOR[a.kind]}>{KIND_LABELS[a.kind]}</Pill>
@@ -248,6 +272,8 @@ export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenN
           onAdd={() => setAssignmentModal({ open: true, editing: null })}
           onEdit={(a) => setAssignmentModal({ open: true, editing: a })}
           onChanged={refreshAssignments}
+          courseName={course.name}
+          onOpenNote={onOpenNote}
         />
       )}
 
@@ -261,7 +287,7 @@ export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenN
       )}
 
       {sub === "notes" && (
-        <NoteList notes={myNotes} onChanged={refreshNotes} courseId={courseId} onOpenNote={onOpenNote} />
+        <NoteList notes={myNotes} onChanged={refreshNotes} courseId={courseId} courseName={course.name} onOpenNote={onOpenNote} />
       )}
 
       {sub === "files" && (
@@ -273,7 +299,17 @@ export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenN
           projects={myProjects}
           onChanged={refreshProjects}
           courseId={courseId}
+          courseName={course.name}
+          onOpenNote={onOpenNote}
         />
+      )}
+
+      {sub === "todos" && (
+        <TodoList entityType="course" entityId={courseId} onChanged={refreshTodos} />
+      )}
+
+      {sub === "time" && (
+        <TimeSection entityType="course" entityId={courseId} entityName={course.name} />
       )}
 
       <CourseAssignmentModal
@@ -345,7 +381,7 @@ function ClassCalendar({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-100">
+        <h2 className="text-lg font-semibold text-slate-900">
           {anchor.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
         </h2>
         <div className="flex gap-2">
@@ -367,9 +403,9 @@ function ClassCalendar({
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-xl border border-slate-800 bg-slate-800">
+      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200">
         {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
-          <div key={i} className="bg-slate-950 px-2 py-1 text-center text-xs font-semibold text-slate-500">
+          <div key={i} className="bg-white px-2 py-1 text-center text-xs font-semibold text-slate-500">
             {d}
           </div>
         ))}
@@ -380,8 +416,8 @@ function ClassCalendar({
               key={c.key}
               onClick={() => setSelected(selected === c.key ? null : c.key)}
               className={`flex min-h-16 flex-col items-start gap-1 p-1 text-left transition-colors ${
-                c.inMonth ? "bg-slate-900" : "bg-slate-950/60"
-              } hover:bg-slate-800 ${
+                c.inMonth ? "bg-white" : "bg-white/60"
+              } hover:bg-slate-100 ${
                 selected === c.key ? "ring-2 ring-inset ring-indigo-500" : ""
               }`}
             >
@@ -399,7 +435,7 @@ function ClassCalendar({
                   title={it.title}
                 >
                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${KIND_DOT[it.kind]}`} />
-                  <span className="truncate text-slate-300">{it.title}</span>
+                  <span className="truncate text-slate-600">{it.title}</span>
                 </span>
               ))}
               {items.length > 3 && (
@@ -433,7 +469,7 @@ function ClassCalendar({
           ) : (
             selectedItems.map((it) => (
               <Card key={it.id} className="flex items-center justify-between gap-3">
-                <p className="min-w-0 truncate font-medium text-slate-100">{it.title}</p>
+                <p className="min-w-0 truncate font-medium text-slate-900">{it.title}</p>
                 <Pill className={KIND_COLOR[it.kind]}>
                   {it.kind === "meeting" ? "Meeting" : KIND_LABELS[it.kind]}
                 </Pill>
@@ -451,15 +487,31 @@ function AssignmentList({
   onAdd,
   onEdit,
   onChanged,
+  courseName,
+  onOpenNote,
 }: {
   assignments: Assignment[];
   onAdd: () => void;
   onEdit: (a: Assignment) => void;
   onChanged: () => void;
+  courseName: string;
+  onOpenNote: (id: number) => void;
 }) {
   const { update } = useUpdate<Assignment>("/api/assignments");
   const { remove } = useDelete("/api/assignments");
   const [filter, setFilter] = useState<"all" | AssignmentKind>("all");
+  const [expanded, setExpanded] = useState<number | null>(null);
+
+  const createNote = async (a: Assignment) => {
+    const created = await api.create<Note>("/api/notes", {
+      title: "Untitled",
+      body_md: "",
+      entity_type: "assignment",
+      entity_id: a.id,
+      tags: formatTags(mergeTags([a.title], [courseName])),
+    });
+    onOpenNote(created.id);
+  };
 
   const cycleStatus = async (a: Assignment) => {
     const next = STATUS_ORDER[(STATUS_ORDER.indexOf(a.status) + 1) % STATUS_ORDER.length];
@@ -477,10 +529,10 @@ function AssignmentList({
 
   const statusColor = (s: AssignmentStatus) =>
     s === "done" || s === "graded"
-      ? "bg-emerald-500/15 text-emerald-300"
+      ? "bg-emerald-50 text-emerald-600"
       : s === "in_progress"
-        ? "bg-sky-500/15 text-sky-300"
-        : "bg-slate-800 text-slate-400";
+        ? "bg-sky-50 text-sky-700"
+        : "bg-slate-100 text-slate-500";
 
   return (
     <div className="space-y-3">
@@ -491,7 +543,7 @@ function AssignmentList({
               key={k}
               onClick={() => setFilter(k)}
               className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${
-                filter === k ? "bg-indigo-500 text-white" : "bg-slate-800 text-slate-400 hover:bg-slate-700"
+                filter === k ? "bg-indigo-500 text-white" : "bg-white text-slate-500 hover:bg-slate-100 border border-slate-200"
               }`}
             >
               {k === "all" ? "All" : KIND_LABELS[k]}
@@ -504,44 +556,57 @@ function AssignmentList({
         <EmptyState icon="✏️" title="Nothing here" hint="Add a homework, test, or project" />
       ) : (
         visible.map((a) => (
-          <Card key={a.id} className="group flex items-center justify-between gap-3">
-            <button onClick={() => cycleStatus(a)} className="flex min-w-0 flex-1 items-center gap-3 text-left" title="Click to change status">
-              <span
-                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
-                  a.status === "done" || a.status === "graded"
-                    ? "border-emerald-400 bg-emerald-400/20"
-                    : "border-slate-600"
-                }`}
-              >
-                {(a.status === "done" || a.status === "graded") && (
-                  <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
-                    <path d="M1.5 5.5l2.5 2.5 4.5-5" stroke="#34d399" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                )}
-              </span>
-              <span className="min-w-0">
-                <span className={`block truncate font-medium text-slate-100 ${a.status === "done" || a.status === "graded" ? "line-through opacity-60" : ""}`}>
-                  {a.title}
+          <div key={a.id}>
+            <Card className="group flex items-center justify-between gap-3">
+              <button onClick={() => cycleStatus(a)} className="flex min-w-0 flex-1 items-center gap-3 text-left" title="Click to change status">
+                <span
+                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                    a.status === "done" || a.status === "graded"
+                      ? "border-emerald-500 bg-emerald-100"
+                      : "border-slate-300"
+                  }`}
+                >
+                  {(a.status === "done" || a.status === "graded") && (
+                    <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
+                      <path d="M1.5 5.5l2.5 2.5 4.5-5" stroke="#34d399" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
                 </span>
-                <span className="block text-xs text-slate-500">{fmtDue(a.due_at)}</span>
-              </span>
-            </button>
-            <div className="flex shrink-0 items-center gap-1.5">
-              <Pill className={KIND_COLOR[a.kind]}>{KIND_LABELS[a.kind]}</Pill>
-              <button onClick={() => cycleStatus(a)} title="Change status" className={`rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${statusColor(a.status)}`}>
-                {STATUS_LABELS[a.status]}
+                <span className="min-w-0">
+                  <span className={`block truncate font-medium text-slate-900 ${a.status === "done" || a.status === "graded" ? "line-through opacity-60" : ""}`}>
+                    {a.title}
+                  </span>
+                  <span className="block text-xs text-slate-500">{fmtDue(a.due_at)}</span>
+                </span>
               </button>
-              <IconButton title="Edit" onClick={() => onEdit(a)}>
-                <EditIcon />
-              </IconButton>
-              <DeleteButton
-                onConfirm={async () => {
-                  await remove(a.id);
-                  onChanged();
-                }}
-              />
-            </div>
-          </Card>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <Pill className={KIND_COLOR[a.kind]}>{KIND_LABELS[a.kind]}</Pill>
+                <button onClick={() => cycleStatus(a)} title="Change status" className={`rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${statusColor(a.status)}`}>
+                  {STATUS_LABELS[a.status]}
+                </button>
+                <IconButton title="New note" onClick={() => void createNote(a)}>
+                  <NoteIcon />
+                </IconButton>
+                <IconButton title={expanded === a.id ? "Hide to-dos" : "Show to-dos"} onClick={() => setExpanded(expanded === a.id ? null : a.id)}>
+                  <ListIcon />
+                </IconButton>
+                <IconButton title="Edit" onClick={() => onEdit(a)}>
+                  <EditIcon />
+                </IconButton>
+                <DeleteButton
+                  onConfirm={async () => {
+                    await remove(a.id);
+                    onChanged();
+                  }}
+                />
+              </div>
+            </Card>
+            {expanded === a.id && (
+              <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <TodoList entityType="assignment" entityId={a.id} />
+              </div>
+            )}
+          </div>
         ))
       )}
     </div>
@@ -560,6 +625,7 @@ function MeetingList({
   onChanged: () => void;
 }) {
   const { remove } = useDelete("/api/meetings");
+  const [expanded, setExpanded] = useState<number | null>(null);
   return (
     <div className="space-y-3">
       <div className="flex justify-end">
@@ -569,24 +635,34 @@ function MeetingList({
         <EmptyState icon="🤝" title="No meetings" hint="Add the first one" />
       ) : (
         meetings.map((m) => (
-          <Card key={m.id} className="group flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="font-medium text-slate-100">{m.title}</p>
-              <p className="text-xs text-slate-500">{fmtWhen(m.starts_at)}</p>
-              {m.agenda && <p className="mt-1 text-sm text-slate-400">{m.agenda}</p>}
-            </div>
-            <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
-              <IconButton title="Edit" onClick={() => onEdit(m)}>
-                <EditIcon />
-              </IconButton>
-              <DeleteButton
-                onConfirm={async () => {
-                  await remove(m.id);
-                  onChanged();
-                }}
-              />
-            </div>
-          </Card>
+          <div key={m.id}>
+            <Card className="group flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-medium text-slate-900">{m.title}</p>
+                <p className="text-xs text-slate-500">{fmtWhen(m.starts_at)}</p>
+                {m.agenda && <p className="mt-1 text-sm text-slate-400">{m.agenda}</p>}
+              </div>
+              <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
+                <IconButton title={expanded === m.id ? "Hide to-dos" : "Show to-dos"} onClick={() => setExpanded(expanded === m.id ? null : m.id)}>
+                  <ListIcon />
+                </IconButton>
+                <IconButton title="Edit" onClick={() => onEdit(m)}>
+                  <EditIcon />
+                </IconButton>
+                <DeleteButton
+                  onConfirm={async () => {
+                    await remove(m.id);
+                    onChanged();
+                  }}
+                />
+              </div>
+            </Card>
+            {expanded === m.id && (
+              <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <TodoList entityType="meeting" entityId={m.id} />
+              </div>
+            )}
+          </div>
         ))
       )}
     </div>
@@ -597,11 +673,13 @@ function NoteList({
   notes,
   onChanged,
   courseId,
+  courseName,
   onOpenNote,
 }: {
   notes: Note[];
   onChanged: () => void;
   courseId: number;
+  courseName: string;
   onOpenNote: (id: number) => void;
 }) {
   const { remove } = useDelete("/api/notes");
@@ -612,6 +690,7 @@ function NoteList({
       body_md: "",
       entity_type: "course",
       entity_id: courseId,
+      tags: formatTags([courseName]),
     });
     onChanged();
     onOpenNote(created.id);
@@ -628,11 +707,14 @@ function NoteList({
         notes.map((n) => (
           <Card
             key={n.id}
-            className="group cursor-pointer transition-colors hover:bg-slate-900"
+            className="group cursor-pointer transition-colors hover:bg-slate-50"
             >
             <button className="w-full text-left" onClick={() => onOpenNote(n.id)}>
               <div className="flex items-start justify-between gap-3">
-                <p className="font-medium text-slate-100">{n.title || "Untitled"}</p>
+                <div className="min-w-0">
+                  <p className="font-medium text-slate-900">{n.title || "Untitled"}</p>
+                  <TagPills tags={parseTags(n.tags)} max={3} className="mt-1" />
+                </div>
                 <div
                   className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
                   onClick={(e) => e.stopPropagation()}
@@ -687,7 +769,7 @@ function FileList({
           return (
             <Card key={f.id} className="group flex items-start justify-between gap-3">
               <button className="min-w-0 text-left" onClick={() => setPreview(f)}>
-                <p className="font-medium text-slate-100 hover:text-indigo-300">{f.title}</p>
+                <p className="font-medium text-slate-900 hover:text-indigo-600">{f.title}</p>
                 <p className="text-xs text-slate-500">
                   {f.filename}
                   {f.size ? ` · ${(f.size / 1024).toFixed(1)} KB` : ""}
@@ -705,7 +787,7 @@ function FileList({
                   <a
                     href={href}
                     download={f.filename || f.title}
-                    className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200"
+                    className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
                     title="Download"
                   >
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
@@ -754,20 +836,26 @@ function FileModal({
   courseId: number;
 }) {
   const editing = Boolean(initial);
-  const { create, error: createError } = useCreate<CourseFile>("/api/files", () => {
-    onClose();
-    onDone();
-  });
   const { update, error: updateError } = useUpdate<CourseFile>("/api/files");
   const [title, setTitle] = useState(initial?.title ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [fileMeta, setFileMeta] = useState<{ name: string; mime: string; size: number; data: string } | null>(null);
-  const error = createError || updateError;
+  const [progress, setProgress] = useState<{ phase: "read" | "upload"; pct: number } | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const error = updateError || (uploadError ? { message: uploadError } : null);
 
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
+    setUploadError(null);
+    setProgress({ phase: "read", pct: 0 });
     const reader = new FileReader();
+    reader.onprogress = (pe) => {
+      if (pe.lengthComputable) {
+        setProgress({ phase: "read", pct: Math.round((pe.loaded / pe.total) * 100) });
+      }
+    };
     reader.onload = () => {
       const result = reader.result as string;
       const comma = result.indexOf(",");
@@ -777,33 +865,78 @@ function FileModal({
         size: f.size,
         data: comma >= 0 ? result.slice(comma + 1) : result,
       });
+      setProgress(null);
     };
+    reader.onerror = () => setUploadError("Failed to read the selected file");
     reader.readAsDataURL(f);
   };
 
+  const upload = (body: Record<string, unknown>): Promise<boolean> =>
+    new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${apiBase()}/api/files`);
+      xhr.setRequestHeader("Content-Type", "application/json");
+      const token = getToken();
+      if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      xhr.upload.onprogress = (pe) => {
+        if (pe.lengthComputable) {
+          setProgress({ phase: "upload", pct: Math.round((pe.loaded / pe.total) * 100) });
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          setProgress(null);
+          resolve(true);
+        } else {
+          let detail = `Upload failed (${xhr.status})`;
+          try {
+            const parsed = JSON.parse(xhr.responseText);
+            if (parsed?.error) detail = parsed.error;
+          } catch {
+            /* ignore */
+          }
+          setUploadError(detail);
+          resolve(false);
+        }
+      };
+      xhr.onerror = () => {
+        setUploadError("Upload failed — check the connection");
+        resolve(false);
+      };
+      xhr.send(JSON.stringify(body));
+    });
+
   const save = async () => {
-    if (!title.trim()) return;
-    const body = {
-      title: title.trim(),
-      notes: notes.trim() || null,
-      course_id: courseId,
-      ...(initial
-        ? {}
-        : {
-            filename: fileMeta?.name ?? null,
-            mime: fileMeta?.mime ?? null,
-            size: fileMeta?.size ?? null,
-            data: fileMeta?.data ?? null,
-          }),
-    };
+    if (!title.trim() || saving) return;
+    setUploadError(null);
     if (initial) {
-      const ok = await update(initial.id, body);
+      const ok = await update(initial.id, {
+        title: title.trim(),
+        notes: notes.trim() || null,
+        course_id: courseId,
+      });
       if (ok) {
         onClose();
         onDone();
       }
-    } else {
-      create(body);
+      return;
+    }
+    if (!fileMeta) return;
+    setSaving(true);
+    setProgress({ phase: "upload", pct: 0 });
+    const ok = await upload({
+      title: title.trim(),
+      notes: notes.trim() || null,
+      course_id: courseId,
+      filename: fileMeta.name,
+      mime: fileMeta.mime,
+      size: fileMeta.size,
+      data: fileMeta.data,
+    });
+    setSaving(false);
+    if (ok) {
+      onClose();
+      onDone();
     }
   };
 
@@ -824,22 +957,39 @@ function FileModal({
             <input
               type="file"
               onChange={onPick}
-              className="block w-full text-sm text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-slate-200 hover:file:bg-slate-700"
+              className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
             />
           </Field>
         )}
         {fileMeta && (
-          <p className="text-xs text-slate-500">
-            {fileMeta.name} · {(fileMeta.size / 1024).toFixed(1)} KB
-          </p>
+          <div>
+            <p className="text-xs text-slate-500">
+              {fileMeta.name} · {(fileMeta.size / 1024).toFixed(1)} KB
+            </p>
+            {progress && (
+              <div className="mt-2">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                  <div
+                    className="h-full bg-indigo-500 transition-[width] duration-150"
+                    style={{ width: `${Math.max(2, progress.pct)}%` }}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-slate-400">
+                  {progress.phase === "read" ? "Reading file…" : "Uploading…"} {progress.pct}%
+                </p>
+              </div>
+            )}
+          </div>
         )}
         <Field label="Notes">
           <TextInput value={notes} onChange={setNotes} placeholder="Optional" />
         </Field>
-        {error && <p className="text-xs text-rose-400">{error.message}</p>}
+        {error && <p className="text-xs text-rose-600">{error.message}</p>}
         <div className="flex justify-end gap-2 pt-1">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button type="submit">{editing ? "Save" : "Upload"}</Button>
+          <Button variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button type="submit" disabled={saving || (editing ? false : !fileMeta)}>
+            {saving ? (progress?.phase === "upload" ? `Uploading ${progress.pct}%` : "Saving…") : editing ? "Save" : "Upload"}
+          </Button>
         </div>
       </form>
     </Modal>
@@ -850,10 +1000,14 @@ function ProjectList({
   projects,
   onChanged,
   courseId,
+  courseName,
+  onOpenNote,
 }: {
   projects: Project[];
   onChanged: () => void;
   courseId: number;
+  courseName: string;
+  onOpenNote: (id: number) => void;
 }) {
   const { update } = useUpdate<Project>("/api/projects");
   const { remove } = useDelete("/api/projects");
@@ -861,6 +1015,18 @@ function ProjectList({
     open: false,
     editing: null,
   });
+  const [expanded, setExpanded] = useState<number | null>(null);
+
+  const createNote = async (p: Project) => {
+    const created = await api.create<Note>("/api/notes", {
+      title: "Untitled",
+      body_md: "",
+      entity_type: "project",
+      entity_id: p.id,
+      tags: formatTags(mergeTags([p.title], [courseName])),
+    });
+    onOpenNote(created.id);
+  };
 
   const cycleStatus = async (p: Project) => {
     const next =
@@ -878,40 +1044,53 @@ function ProjectList({
         <EmptyState icon="🚀" title="No projects" hint="Add the first one" />
       ) : (
         projects.map((p) => (
-          <Card key={p.id} className="group flex items-center justify-between gap-3">
-            <button onClick={() => cycleStatus(p)} className="flex min-w-0 flex-1 items-center gap-3 text-left" title="Click to change status">
-              <span
-                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
-                  p.status === "done" ? "border-emerald-400 bg-emerald-400/20" : "border-slate-600"
-                }`}
-              >
-                {p.status === "done" && (
-                  <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
-                    <path d="M1.5 5.5l2.5 2.5 4.5-5" stroke="#34d399" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                )}
-              </span>
-              <span className="min-w-0">
-                <span className={`block truncate font-medium text-slate-100 ${p.status === "done" ? "line-through opacity-60" : ""}`}>
-                  {p.title}
+          <div key={p.id}>
+            <Card className="group flex items-center justify-between gap-3">
+              <button onClick={() => cycleStatus(p)} className="flex min-w-0 flex-1 items-center gap-3 text-left" title="Click to change status">
+                <span
+                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                    p.status === "done" ? "border-emerald-500 bg-emerald-100" : "border-slate-300"
+                  }`}
+                >
+                  {p.status === "done" && (
+                    <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
+                      <path d="M1.5 5.5l2.5 2.5 4.5-5" stroke="#34d399" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
                 </span>
-                <span className="block text-xs text-slate-500">
-                  {p.status === "in_progress" ? "In progress" : p.status} · due {fmtWhen(p.deadline)}
+                <span className="min-w-0">
+                  <span className={`block truncate font-medium text-slate-900 ${p.status === "done" ? "line-through opacity-60" : ""}`}>
+                    {p.title}
+                  </span>
+                  <span className="block text-xs text-slate-500">
+                    {p.status === "in_progress" ? "In progress" : p.status} · due {fmtWhen(p.deadline)}
+                  </span>
                 </span>
-              </span>
-            </button>
-            <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
-              <IconButton title="Edit" onClick={() => setModal({ open: true, editing: p })}>
-                <EditIcon />
-              </IconButton>
-              <DeleteButton
-                onConfirm={async () => {
-                  await remove(p.id);
-                  onChanged();
-                }}
-              />
-            </div>
-          </Card>
+              </button>
+              <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
+                <IconButton title={expanded === p.id ? "Hide to-dos" : "Show to-dos"} onClick={() => setExpanded(expanded === p.id ? null : p.id)}>
+                  <ListIcon />
+                </IconButton>
+                <IconButton title="New note" onClick={() => void createNote(p)}>
+                  <NoteIcon />
+                </IconButton>
+                <IconButton title="Edit" onClick={() => setModal({ open: true, editing: p })}>
+                  <EditIcon />
+                </IconButton>
+                <DeleteButton
+                  onConfirm={async () => {
+                    await remove(p.id);
+                    onChanged();
+                  }}
+                />
+              </div>
+            </Card>
+            {expanded === p.id && (
+              <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <TodoList entityType="project" entityId={p.id} />
+              </div>
+            )}
+          </div>
         ))
       )}
       <ProjectModal
@@ -1006,7 +1185,7 @@ function CourseAssignmentModal({
         <Field label="Due date">
           <input type="datetime-local" className={inputStyles} value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
         </Field>
-        {error && <p className="text-xs text-rose-400">{error.message}</p>}
+        {error && <p className="text-xs text-rose-600">{error.message}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button type="submit">{editing ? "Save" : "Add"}</Button>
@@ -1077,7 +1256,7 @@ function CourseMeetingModal({
         <Field label="Agenda">
           <TextInput value={agenda} onChange={setAgenda} placeholder="e.g. Review chapters 1–3" />
         </Field>
-        {error && <p className="text-xs text-rose-400">{error.message}</p>}
+        {error && <p className="text-xs text-rose-600">{error.message}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button type="submit">{editing ? "Save" : "Add"}</Button>
@@ -1152,9 +1331,9 @@ function ProjectModal({
             onChange={(e) => setStatus(e.target.checked ? "done" : "backlog")}
             className="h-4 w-4 accent-indigo-500"
           />
-          <span className="text-sm text-slate-300">Mark as done</span>
+          <span className="text-sm text-slate-600">Mark as done</span>
         </div>
-        {error && <p className="text-xs text-rose-400">{error.message}</p>}
+        {error && <p className="text-xs text-rose-600">{error.message}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button type="submit">{editing ? "Save" : "Add"}</Button>

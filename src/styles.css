@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 html,
@@ -12,8 +12,8 @@ body,
 
 body {
   margin: 0;
-  background-color: #0f172a;
-  color: #e2e8f0;
+  background-color: #f8fafc;
+  color: #0f172a;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -24,7 +24,7 @@ body {
   height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: #cbd5e1;
   border-radius: 8px;
 }
 ::-webkit-scrollbar-track {
@@ -74,8 +74,8 @@ body {
 .note-body {
   font-size: 0.95rem;
   line-height: 1.7;
-  color: #cbd5e1;
-  caret-color: #a5b4fc;
+  color: #334155;
+  caret-color: var(--color-indigo-600);
 }
 .note-body:focus {
   outline: none;
@@ -86,23 +86,23 @@ body {
 .note-body h1 {
   font-size: 1.6em;
   font-weight: 700;
-  color: #f1f5f9;
+  color: #0f172a;
   margin: 0.7em 0 0.35em;
 }
 .note-body h2 {
   font-size: 1.3em;
   font-weight: 700;
-  color: #f1f5f9;
+  color: #0f172a;
   margin: 0.6em 0 0.3em;
 }
 .note-body h3 {
   font-size: 1.1em;
   font-weight: 600;
-  color: #f1f5f9;
+  color: #0f172a;
   margin: 0.55em 0 0.25em;
 }
 .note-body strong {
-  color: #f8fafc;
+  color: #0f172a;
   font-weight: 600;
 }
 .note-body ul,
@@ -120,24 +120,24 @@ body {
   margin: 0.15em 0;
 }
 .note-body li::marker {
-  color: #64748b;
-}
-.note-body blockquote {
-  border-left: 3px solid #6366f1;
-  margin: 0.5em 0;
-  padding: 0.1em 0 0.1em 0.9em;
   color: #94a3b8;
 }
+.note-body blockquote {
+  border-left: 3px solid var(--color-indigo-500);
+  margin: 0.5em 0;
+  padding: 0.1em 0 0.1em 0.9em;
+  color: #475569;
+}
 .note-body code {
-  background: #1e293b;
+  background: #f1f5f9;
   border-radius: 4px;
   padding: 0.12em 0.35em;
   font-size: 0.85em;
-  color: #c4b5fd;
+  color: var(--color-indigo-700);
 }
 .note-body pre {
-  background: #0b1120;
-  border: 1px solid #1e293b;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
   border-radius: 8px;
   padding: 0.8em 1em;
   overflow-x: auto;
@@ -146,15 +146,15 @@ body {
 .note-body pre code {
   background: transparent;
   padding: 0;
-  color: #a5b4fc;
+  color: var(--color-indigo-800);
 }
 .note-body hr {
   border: none;
-  border-top: 1px solid #1e293b;
+  border-top: 1px solid #e2e8f0;
   margin: 1.2em 0;
 }
 .note-body a {
-  color: #818cf8;
+  color: var(--color-indigo-600);
   text-decoration: underline;
 }
 .note-body ul[data-type="taskList"] {
@@ -171,7 +171,7 @@ body {
   margin-top: 0.3em;
 }
 .note-body ul[data-type="taskList"] input[type="checkbox"] {
-  accent-color: #6366f1;
+  accent-color: var(--color-indigo-500);
   width: 1em;
   height: 1em;
 }
@@ -183,8 +183,32 @@ body {
 }
 .note-body p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
-  color: #475569;
+  color: #94a3b8;
   float: left;
   height: 0;
   pointer-events: none;
+}
+.note-body img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 0.5em 0;
+}
+.note-body .note-file-chip {
+  margin: 0.5em 0;
+}
+.note-body .note-file-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.45em 0.8em;
+  color: var(--color-indigo-600);
+  text-decoration: none;
+  font-size: 0.9em;
+}
+.note-body .note-file-link:hover {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
 }

@@ -359,7 +359,7 @@ function EventModal({
             />
           </Field>
         )}
-        <label className="flex items-center gap-2 text-xs font-medium text-slate-400">
+        <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
           <input type="checkbox" className="h-4 w-4 accent-indigo-500" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
           All day
         </label>
@@ -402,13 +402,13 @@ function EventModal({
             placeholder="Optional"
           />
         </Field>
-        {error && <p className="text-xs text-rose-400">{error}</p>}
+        {error && <p className="text-xs text-rose-600">{error}</p>}
         <div className="flex items-center justify-between gap-2 pt-1">
           {editing && (
             <button
               type="button"
               onClick={remove}
-              className="rounded-lg px-3 py-1.5 text-sm font-medium text-rose-300 transition-colors hover:bg-rose-900/40"
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50"
             >
               {busy ? "Deleting…" : "Delete"}
             </button>
@@ -489,7 +489,7 @@ function AssignmentModal({
         <Field label="Notes">
           <textarea className={inputStyles + " min-h-20 resize-y"} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </Field>
-        {error && <p className="text-xs text-rose-400">{error}</p>}
+        {error && <p className="text-xs text-rose-600">{error}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save changes"}</Button>
@@ -578,7 +578,7 @@ function MeetingModal({
         <Field label="Notes">
           <textarea className={inputStyles + " min-h-16 resize-y"} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </Field>
-        {error && <p className="text-xs text-rose-400">{error}</p>}
+        {error && <p className="text-xs text-rose-600">{error}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save changes"}</Button>
@@ -589,7 +589,7 @@ function MeetingModal({
 }
 
 const inputStyles =
-  "rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 placeholder-slate-500 outline-none focus:border-indigo-500";
+  "rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-indigo-500";
 
 function ItemChip({ item, onClick }: { item: CalItem; onClick: () => void }) {
   return (
@@ -598,7 +598,7 @@ function ItemChip({ item, onClick }: { item: CalItem; onClick: () => void }) {
         e.stopPropagation();
         onClick();
       }}
-      className="flex w-full items-center gap-1.5 truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium leading-tight text-slate-200 transition-colors hover:brightness-125"
+      className="flex w-full items-center gap-1.5 truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium leading-tight text-slate-700 transition-colors hover:brightness-125"
       style={{ background: withAlpha(item.color, "2e") }}
     >
       <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: item.color }} />
@@ -684,21 +684,21 @@ function DayColumn({
     : null;
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col border-r border-slate-800/70 last:border-r-0">
+    <div className="flex min-w-0 flex-1 flex-col border-r border-slate-200 last:border-r-0">
       {allDay.length > 0 && (
-        <div className="flex flex-col gap-0.5 border-b border-slate-800/70 px-1 py-1">
+        <div className="flex flex-col gap-0.5 border-b border-slate-200 px-1 py-1">
           {allDay.map((it) => (
             <ItemChip key={it.key} item={it} onClick={() => onItemClick(it)} />
           ))}
         </div>
       )}
       <div
-        className={`relative cursor-crosshair select-none ${isToday ? "bg-indigo-500/5" : ""}`}
+        className={`relative cursor-crosshair select-none ${isToday ? "bg-indigo-50/60" : ""}`}
         style={{ height: DAY_H }}
         onMouseDown={onMouseDown}
       >
         {HOURS.map((h) => (
-          <div key={h} className="absolute left-0 right-0 border-t border-slate-800/60" style={{ top: h * HOUR_H }} />
+          <div key={h} className="absolute left-0 right-0 border-t border-slate-200" style={{ top: h * HOUR_H }} />
         ))}
         {nowTop != null && (
           <div className="absolute left-0 right-0 z-20 border-t-2 border-rose-500/80" style={{ top: nowTop }}>
@@ -731,7 +731,7 @@ function DayColumn({
               }}
             >
               <span
-                className={`block text-[11px] font-semibold text-slate-100 ${
+                className={`block text-[11px] font-semibold text-slate-900 ${
                   hgt >= 60 ? "break-words line-clamp-3" : hgt >= 40 ? "break-words line-clamp-2" : "truncate"
                 }`}
               >
@@ -748,14 +748,14 @@ function DayColumn({
         })}
         {dragRange && (
           <div
-            className="pointer-events-none absolute left-0 z-10 rounded-md border border-indigo-400 bg-indigo-500/25 px-1"
+            className="pointer-events-none absolute left-0 z-10 rounded-md border border-indigo-400 bg-indigo-100 px-1"
             style={{
               top: (dragRange.start / 1440) * DAY_H,
               height: Math.max(((dragRange.end - dragRange.start) / 1440) * DAY_H, 8),
               width: "100%",
             }}
           >
-            <span className="text-[10px] font-medium text-indigo-200">
+            <span className="text-[10px] font-medium text-indigo-700">
               {fmtMinutes(dragRange.start)} – {fmtMinutes(dragRange.end)}
             </span>
           </div>
@@ -1103,7 +1103,7 @@ export function CalendarPage() {
               {(status?.calendars ?? []).map((c) => {
                 const checked = !hidden.has(c.href);
                 return (
-                  <label key={c.href} className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 hover:bg-slate-800/50">
+                  <label key={c.href} className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 hover:bg-slate-100">
                     <input
                       type="checkbox"
                       className="h-3.5 w-3.5 accent-indigo-500"
@@ -1118,7 +1118,7 @@ export function CalendarPage() {
                       }
                     />
                     <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: normalizeColor(c.color) ?? c.color ?? "#6366f1" }} />
-                    <span className="min-w-0 truncate text-sm text-slate-300">{c.name || c.href}</span>
+                    <span className="min-w-0 truncate text-sm text-slate-400">{c.name || c.href}</span>
                     <span className="ml-auto shrink-0 font-mono text-[10px] text-slate-500">
                       {(normalizeColor(c.color) ?? c.color ?? "auto").toUpperCase()}
                     </span>
@@ -1130,7 +1130,7 @@ export function CalendarPage() {
           <div>
             <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">School Hub</p>
             <div className="space-y-1">
-              <label className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 hover:bg-slate-800/50">
+              <label className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 hover:bg-slate-100">
                 <input
                   type="checkbox"
                   className="h-3.5 w-3.5 accent-amber-500"
@@ -1138,9 +1138,9 @@ export function CalendarPage() {
                   onChange={(e) => setShowAssignments(e.target.checked)}
                 />
                 <span className="h-2.5 w-2.5 shrink-0 rounded-sm bg-amber-500" />
-                <span className="text-sm text-slate-300">Assignments</span>
+                <span className="text-sm text-slate-400">Assignments</span>
               </label>
-              <label className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 hover:bg-slate-800/50">
+              <label className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 hover:bg-slate-100">
                 <input
                   type="checkbox"
                   className="h-3.5 w-3.5 accent-teal-500"
@@ -1148,7 +1148,7 @@ export function CalendarPage() {
                   onChange={(e) => setShowMeetings(e.target.checked)}
                 />
                 <span className="h-2.5 w-2.5 shrink-0 rounded-sm bg-teal-500" />
-                <span className="text-sm text-slate-300">Meetings</span>
+                <span className="text-sm text-slate-400">Meetings</span>
               </label>
             </div>
           </div>
@@ -1157,33 +1157,33 @@ export function CalendarPage() {
               Last sync {new Date(status.last_sync_at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
             </p>
           )}
-          {status?.last_sync_error && <p className="text-[11px] leading-relaxed text-rose-400">{status.last_sync_error}</p>}
+          {status?.last_sync_error && <p className="text-[11px] leading-relaxed text-rose-600">{status.last_sync_error}</p>}
         </aside>
 
       <main className="min-w-0 flex-1 space-y-4">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-slate-100">Calendar</h1>
-            <p className="text-sm text-slate-400">Everything at a glance</p>
+            <h1 className="text-2xl font-bold text-slate-900">Calendar</h1>
+            <p className="text-sm text-slate-500">Everything at a glance</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setSidebarOpen((o) => !o)}
               title={sidebarOpen ? "Hide calendar list" : "Show calendar list"}
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-300 transition-colors hover:bg-slate-800"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-400 transition-colors hover:bg-slate-100"
             >
               <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6">
                 <rect x="3" y="4" width="14" height="12" rx="2" />
                 <line x1="8" y1="4" x2="8" y2="16" />
               </svg>
             </button>
-            <div className="flex rounded-lg border border-slate-700 bg-slate-900 p-0.5">
+            <div className="flex rounded-lg border border-slate-300 bg-white p-0.5">
               {viewButtons.map((v) => (
                 <button
                   key={v.id}
                   onClick={() => switchView(v.id)}
                   className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${
-                    view === v.id ? "bg-indigo-500 text-white" : "text-slate-400 hover:text-slate-200"
+                    view === v.id ? "bg-indigo-500 text-white" : "text-slate-500 hover:text-slate-700"
                   }`}
                 >
                   {v.label}
@@ -1191,14 +1191,14 @@ export function CalendarPage() {
               ))}
             </div>
             <div className="flex items-center gap-1">
-              <button onClick={goPrev} className="rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-sm text-slate-300 hover:bg-slate-800">‹</button>
-              <button onClick={goToday} className="rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-sm font-medium text-slate-300 hover:bg-slate-800">Today</button>
-              <button onClick={goNext} className="rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-sm text-slate-300 hover:bg-slate-800">›</button>
+              <button onClick={goPrev} className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-400 hover:bg-slate-100">‹</button>
+              <button onClick={goToday} className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-400 hover:bg-slate-100">Today</button>
+              <button onClick={goNext} className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-400 hover:bg-slate-100">›</button>
             </div>
             <button
               onClick={syncNow}
               disabled={!tauri || !connected || syncing}
-              className="rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-sm text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+              className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-400 hover:bg-slate-100 disabled:opacity-50"
             >
               {syncing ? "Syncing…" : "Sync"}
             </button>
@@ -1207,14 +1207,14 @@ export function CalendarPage() {
                 + New event
               </Button>
             )}
-            <span className="ml-1 text-lg font-semibold text-slate-100">{headerLabel}</span>
+            <span className="ml-1 text-lg font-semibold text-slate-900">{headerLabel}</span>
           </div>
         </header>
 
         <div key={view} className="animate-fade-slide">
           {view === "month" && (
-          <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/60">
-            <div className="grid grid-cols-7 border-b border-slate-800">
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="grid grid-cols-7 border-b border-slate-200">
               {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
                 <div key={d} className="px-2 py-2 text-center text-xs font-semibold uppercase tracking-wider text-slate-500">
                   {d}
@@ -1232,13 +1232,13 @@ export function CalendarPage() {
                       setAnchor(c.date);
                       setSelectedDay(c.key);
                     }}
-                    className={`flex min-h-20 flex-col items-stretch gap-1 border-b border-r border-slate-800/70 p-1.5 text-left transition-colors last:border-r-0 hover:bg-slate-800/40 ${
-                      c.inMonth ? "bg-transparent" : "bg-slate-950/40"
+                    className={`flex min-h-20 flex-col items-stretch gap-1 border-b border-r border-slate-200 p-1.5 text-left transition-colors last:border-r-0 hover:bg-slate-100 ${
+                      c.inMonth ? "bg-transparent" : "bg-slate-100/60"
                     }`}
                   >
                     <span
                       className={`self-start rounded-full px-1.5 py-0.5 text-xs font-medium ${
-                        isToday ? "bg-indigo-500 text-white" : c.inMonth ? "text-slate-300" : "text-slate-600"
+                        isToday ? "bg-indigo-500 text-white" : c.inMonth ? "text-slate-400" : "text-slate-400"
                       }`}
                     >
                       {c.date.getDate()}
@@ -1259,14 +1259,14 @@ export function CalendarPage() {
         )}
 
         {view === "week" && (
-          <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/60">
-            <div className="flex border-b border-slate-800">
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="flex border-b border-slate-200">
               <div className="w-14 shrink-0" />
               {weekDays.map((d) => (
                 <div
                   key={d.key}
                   className={`min-w-0 flex-1 px-2 py-2 text-center text-xs font-semibold uppercase tracking-wider ${
-                    d.key === todayKey ? "text-indigo-400" : "text-slate-500"
+                    d.key === todayKey ? "text-indigo-600" : "text-slate-500"
                   }`}
                 >
                   {d.date.toLocaleDateString(undefined, { weekday: "short" })}{" "}
@@ -1306,12 +1306,12 @@ export function CalendarPage() {
         )}
 
         {view === "day" && (
-          <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/60">
-            <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2.5">
-              <p className={`text-sm font-semibold ${dayKey(anchor) === todayKey ? "text-indigo-400" : "text-slate-300"}`}>
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-2.5">
+              <p className={`text-sm font-semibold ${dayKey(anchor) === todayKey ? "text-indigo-600" : "text-slate-400"}`}>
                 {anchor.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
               </p>
-              {dayKey(anchor) === todayKey && <span className="text-xs font-medium text-indigo-400">Today</span>}
+              {dayKey(anchor) === todayKey && <span className="text-xs font-medium text-indigo-600">Today</span>}
             </div>
             <div className="max-h-[680px] overflow-y-auto">
               <div className="flex">
@@ -1348,19 +1348,19 @@ export function CalendarPage() {
               return (
                 <div key={d.key} className="flex gap-3">
                   <div className="w-28 shrink-0 pt-1 text-right">
-                    <p className={`text-sm font-semibold ${isToday ? "text-indigo-400" : "text-slate-200"}`}>
+                    <p className={`text-sm font-semibold ${isToday ? "text-indigo-600" : "text-slate-700"}`}>
                       {d.date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
                     </p>
                     {isToday && <p className="text-xs text-indigo-500">Today</p>}
                   </div>
-                  <div className="min-w-0 flex-1 space-y-1 border-l border-slate-800 pl-4">
+                  <div className="min-w-0 flex-1 space-y-1 border-l border-slate-200 pl-4">
                     {items.map((it) => {
                       if (it.kind === "assignment") {
                         const a = assignments.data?.find((x) => x.id === it.id);
                         return (
                           <div
                             key={it.key}
-                            className="flex items-center gap-2.5 rounded-lg px-3 py-2 transition-colors hover:bg-slate-800/50"
+                            className="flex items-center gap-2.5 rounded-lg px-3 py-2 transition-colors hover:bg-slate-100"
                           >
                             <input
                               type="checkbox"
@@ -1369,7 +1369,7 @@ export function CalendarPage() {
                               onChange={() => a && toggleAssignment(a)}
                             />
                             <button onClick={() => setAssignmentModal(a ?? null)} className="min-w-0 flex-1 text-left">
-                              <p className="truncate text-sm font-medium text-slate-100">{it.title}</p>
+                              <p className="truncate text-sm font-medium text-slate-900">{it.title}</p>
                               <p className="text-xs text-slate-500">{fmtRange(it)}</p>
                             </button>
                           </div>
@@ -1379,11 +1379,11 @@ export function CalendarPage() {
                         <div
                           key={it.key}
                           onClick={() => openItem(it)}
-                          className="flex items-center gap-2.5 rounded-lg px-3 py-2 transition-colors hover:bg-slate-800/50"
+                          className="flex items-center gap-2.5 rounded-lg px-3 py-2 transition-colors hover:bg-slate-100"
                         >
                           <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: it.color }} />
-                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-100">{it.title}</span>
-                          <span className="shrink-0 text-xs text-slate-400">{fmtRange(it)}</span>
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">{it.title}</span>
+                          <span className="shrink-0 text-xs text-slate-500">{fmtRange(it)}</span>
                         </div>
                       );
                     })}
@@ -1405,18 +1405,18 @@ export function CalendarPage() {
               <div
                 key={it.key}
                 onClick={() => openItem(it)}
-                className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 transition-colors hover:bg-slate-800/50"
+                className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 transition-colors hover:bg-slate-100"
               >
                 <div className="flex min-w-0 items-center gap-2">
                   <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: it.color }} />
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-slate-100">{it.title}</p>
+                    <p className="truncate text-sm font-medium text-slate-900">{it.title}</p>
                     <p className="text-xs text-slate-500">
                       {it.kind === "event" ? "Calendar event" : it.kind === "assignment" ? "Assignment" : "Meeting"}
                     </p>
                   </div>
                 </div>
-                <span className="shrink-0 text-xs text-slate-400">{fmtRange(it)}</span>
+                <span className="shrink-0 text-xs text-slate-500">{fmtRange(it)}</span>
               </div>
             ))}
           </div>

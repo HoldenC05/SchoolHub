@@ -7,6 +7,8 @@ const MAIN_ITEMS: { nav: Nav; label: string; icon: string }[] = [
   { nav: "planner", label: "Planner", icon: "🧭" },
   { nav: "classes", label: "Classes", icon: "📚" },
   { nav: "homework", label: "Homework / Tests", icon: "✏️" },
+  { nav: "tasks", label: "Tasks", icon: "🗂️" },
+  { nav: "tracker", label: "Time Tracker", icon: "⏱️" },
   { nav: "notes", label: "Notes", icon: "📝" },
   { nav: "ideas", label: "Ideas", icon: "💡" },
 ];
@@ -16,16 +18,18 @@ export function Sidebar({
   onNavigate,
   activities,
   onAddActivity,
+  appName,
 }: {
   nav: Nav;
   onNavigate: (nav: Nav) => void;
   activities: Activity[] | null;
   onAddActivity: () => void;
+  appName: string;
 }) {
   return (
-    <div className="flex h-full w-64 flex-col border-r border-slate-800 bg-slate-950/80">
+    <div className="flex h-full w-64 flex-col border-r border-slate-200 bg-white">
       <div className="px-5 py-5">
-        <h1 className="text-lg font-bold tracking-tight text-slate-100">School Hub</h1>
+        <h1 className="text-lg font-bold tracking-tight text-slate-900">{appName}</h1>
         <p className="text-xs text-slate-500">Everything in one place</p>
       </div>
 
@@ -42,8 +46,8 @@ export function Sidebar({
                   onClick={() => onNavigate(target)}
                   className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                     active
-                      ? "bg-indigo-500/15 text-indigo-300"
-                      : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                      ? "bg-indigo-50 text-indigo-700"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                   }`}
                 >
                   <span>{icon}</span>
@@ -60,7 +64,7 @@ export function Sidebar({
           </span>
           <button
             onClick={onAddActivity}
-            className="rounded p-0.5 text-slate-500 hover:text-slate-200"
+            className="rounded p-0.5 text-slate-400 hover:text-slate-700"
             title="Add activity"
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
@@ -71,7 +75,7 @@ export function Sidebar({
 
         <ul className="space-y-1">
           {activities && activities.length === 0 && (
-            <li className="px-3 py-1.5 text-xs text-slate-600">
+            <li className="px-3 py-1.5 text-xs text-slate-400">
               No activities yet — add a club, team, or org
             </li>
           )}
@@ -81,13 +85,13 @@ export function Sidebar({
                 onClick={() => onNavigate({ kind: "activity", id: a.id })}
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
                   typeof nav === "object" && nav.kind === "activity" && nav.id === a.id
-                    ? "bg-indigo-500/15 text-indigo-300"
-                    : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                    ? "bg-indigo-50 text-indigo-700"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`}
               >
                 <span
                   className="flex h-6 w-6 items-center justify-center rounded-md text-xs"
-                  style={{ backgroundColor: (a.color || "#334155") + "33", color: a.color || "#94a3b8" }}
+                  style={{ backgroundColor: (a.color || "#334155") + "22", color: a.color || "#64748b" }}
                 >
                   {a.icon || a.name.charAt(0).toUpperCase()}
                 </span>
@@ -97,17 +101,28 @@ export function Sidebar({
           ))}
         </ul>
 
-        <div className="mt-6 border-t border-slate-800 pt-4">
+        <div className="mt-6 border-t border-slate-200 pt-4">
           <button
             onClick={() => onNavigate("integrations")}
             className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
               nav === "integrations"
-                ? "bg-indigo-500/15 text-indigo-300"
-                : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                ? "bg-indigo-50 text-indigo-700"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
             }`}
           >
             <span>🔌</span>
             Integrations
+          </button>
+          <button
+            onClick={() => onNavigate("settings")}
+            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+              nav === "settings"
+                ? "bg-indigo-50 text-indigo-700"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            }`}
+          >
+            <span>⚙️</span>
+            Settings
           </button>
         </div>
       </nav>
