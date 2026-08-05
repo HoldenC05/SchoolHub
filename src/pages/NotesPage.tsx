@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useData, useUpdate, useDelete } from "../lib/useData";
 import { api } from "../lib/api";
 import type { Note } from "../lib/types";
+import type { Nav } from "../lib/nav";
 import { formatTags, parseTags } from "../lib/tags";
 import { TagPills } from "../components/Tags";
 import { NoteEditor } from "../components/NoteEditor";
@@ -24,10 +25,12 @@ function NotesPage({
   selectedId,
   onSelect,
   onBack,
+  returnTo,
 }: {
   selectedId: number | null;
   onSelect: (id: number) => void;
   onBack: () => void;
+  returnTo?: Nav;
 }) {
   const { data: notes, refresh, loading } = useData<Note[]>("/api/notes");
   const { update } = useUpdate<Note>("/api/notes");
@@ -218,6 +221,7 @@ function NotesPage({
             onChanged={refresh}
             onDeleted={(id) => void deleteNote(id)}
             onBack={onBack}
+            returnTo={returnTo}
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">

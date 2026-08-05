@@ -195,6 +195,7 @@ export function TasksPage() {
                         onDragLeave={() => setOver(null)}
                         onDrop={(e) => {
                           e.preventDefault();
+                          e.stopPropagation();
                           const rect = e.currentTarget.getBoundingClientRect();
                           const before = e.clientY < rect.top + rect.height / 2;
                           const status = e.currentTarget.getAttribute("data-status") as TodoStatus;

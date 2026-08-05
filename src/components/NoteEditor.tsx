@@ -242,16 +242,20 @@ function Toolbar({ editor }: { editor: Editor | null }) {
   );
 }
 
+import type { Nav } from "../lib/nav";
+
 export function NoteEditor({
   note,
   onChanged,
   onDeleted,
   onBack,
+  returnTo,
 }: {
   note: Note;
   onChanged: () => void;
   onDeleted: (id: number) => void;
   onBack: () => void;
+  returnTo?: Nav;
 }) {
   const { update } = useUpdate<Note>("/api/notes");
   const { remove } = useDelete("/api/notes");
@@ -521,10 +525,21 @@ export function NoteEditor({
     reader.readAsDataURL(file);
   };
 
+  function backLabel(returnTo?: Nav): string {
+  if (!returnTo) return "← All notes";
+  if (returnTo === "notes") return "← All notes";
+  if (typeof returnTo === "object") {
+    if (returnTo.kind === "course") return `← Notes tab`;
+    if (returnTo.kind === "activity") return `← Notes tab`;
+    if (returnTo.kind === "note") return `← All notes`;
+  }
+  return `← ${returnTo}`;
+}
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b border-slate-200 px-6 py-2.5">
-        <Button variant="ghost" onClick={onBack}>← All notes</Button>
+        <Button variant="ghost" onClick={onBack}>{backLabel(returnTo)}</Button>
         <span className="flex-1" />
         <span className={`text-xs ${status === "error" ? "text-rose-600" : "text-slate-500"}`}>
           {status === "saving" ? "Saving…" : status === "saved" ? "Saved" : status === "error" ? "Save failed" : ""}
