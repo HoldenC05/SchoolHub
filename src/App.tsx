@@ -103,7 +103,7 @@ function App() {
   if (nav === "today") page = <TodayPage />;
   else if (nav === "calendar") page = <CalendarPage />;
   else if (nav === "planner") page = <PlannerPage />;
-  else if (nav === "classes")
+else if (nav === "classes")
     page = <ClassesPage onOpenCourse={(id) => navigate({ kind: "course", id })} />;
   else if (nav === "homework") page = <HomeworkTestsPage />;
   else if (nav === "tasks") page = <TasksHubPage />;
@@ -112,7 +112,7 @@ function App() {
     page = (
       <NotesPage
         selectedId={null}
-        onSelect={(id) => navigate({ kind: "note", id })}
+        onSelect={(id) => navigate({ kind: "note", id, returnTo: nav })}
         onBack={() => navigate("notes")}
       />
     );
@@ -122,16 +122,16 @@ function App() {
   else if (nav === "integrations") page = <IntegrationsPage />;
   else if (nav === "settings") page = <SettingsPage />;
   else if (typeof nav === "object" && nav.kind === "course")
-    page = <CoursePage courseId={nav.id} onOpenNote={(id) => navigate({ kind: "note", id })} />;
+    page = <CoursePage courseId={nav.id} onOpenNote={(id, returnTo) => navigate({ kind: "note", id, returnTo: returnTo ?? nav })} />;
   else if (typeof nav === "object" && nav.kind === "note")
     page = (
       <NotesPage
         selectedId={nav.id}
-        onSelect={(id) => navigate({ kind: "note", id })}
-        onBack={() => navigate("notes")}
+        onSelect={(id) => navigate({ kind: "note", id, returnTo: nav.returnTo })}
+        onBack={() => navigate(nav.returnTo ?? "notes")}
       />
     );
-  else page = <ActivityPage activityId={nav.id} onOpenNote={(id) => navigate({ kind: "note", id })} />;
+  else page = <ActivityPage activityId={nav.id} onOpenNote={(id, returnTo) => navigate({ kind: "note", id, returnTo: returnTo ?? nav })} />;
 
   return (
     <ErrorBoundary>

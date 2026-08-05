@@ -50,7 +50,7 @@ const ListIcon = () => (
   </svg>
 );
 
-export function ActivityPage({ activityId, onOpenNote }: { activityId: number; onOpenNote: (id: number) => void }) {
+export function ActivityPage({ activityId, onOpenNote }: { activityId: number; onOpenNote: (id: number, returnTo?: { kind: "activity"; id: number; sub?: SubTab }) => void }) {
   const { data: activity } = useData<Activity>(`/api/activities/${activityId}`);
   const { data: meetings, refresh: refreshMeetings } = useData<Meeting[]>("/api/meetings");
   const { data: projects, refresh: refreshProjects } = useData<Project[]>("/api/projects");
@@ -198,12 +198,12 @@ export function ActivityPage({ activityId, onOpenNote }: { activityId: number; o
           onChanged={refreshProjects}
           onTasksChanged={refreshTasks}
           activityName={activity.name}
-          onOpenNote={onOpenNote}
+          onOpenNote={(id) => onOpenNote(id, { kind: "activity", id: activityId, sub })}
         />
       )}
 
       {sub === "notes" && (
-        <NoteList notes={myNotes} onChanged={refreshNotes} activityId={activityId} activityName={activity.name} onOpenNote={onOpenNote} />
+        <NoteList notes={myNotes} onChanged={refreshNotes} activityId={activityId} activityName={activity.name} onOpenNote={(id) => onOpenNote(id, { kind: "activity", id: activityId, sub })} />
       )}
 
       {sub === "todos" && (
@@ -346,7 +346,7 @@ function ProjectList({
   onChanged: () => void;
   onTasksChanged: () => void;
   activityName: string;
-  onOpenNote: (id: number) => void;
+  onOpenNote: (id: number, returnTo?: { kind: "activity"; id: number; sub?: SubTab }) => void;
 }) {
   const { update } = useUpdate<Project>("/api/projects");
   const { remove } = useDelete("/api/projects");
@@ -548,7 +548,7 @@ function NoteList({
   onChanged: () => void;
   activityId: number;
   activityName: string;
-  onOpenNote: (id: number) => void;
+  onOpenNote: (id: number, returnTo?: { kind: "activity"; id: number; sub?: SubTab }) => void;
 }) {
   const { remove } = useDelete("/api/notes");
 

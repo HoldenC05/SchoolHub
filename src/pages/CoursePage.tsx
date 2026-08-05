@@ -103,7 +103,7 @@ const KIND_DOT: Record<AssignmentKind | "meeting", string> = {
 
 const STATUS_ORDER: AssignmentStatus[] = ["todo", "in_progress", "done", "graded"];
 
-export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenNote: (id: number) => void }) {
+export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenNote: (id: number, returnTo?: { kind: "course"; id: number; sub?: SubTab }) => void }) {
   const { data: course } = useData<Course>(`/api/courses/${courseId}`);
   const { data: assignments, refresh: refreshAssignments } = useData<Assignment[]>("/api/assignments");
   const { data: meetings, refresh: refreshMeetings } = useData<Meeting[]>("/api/meetings");
@@ -273,7 +273,7 @@ export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenN
           onEdit={(a) => setAssignmentModal({ open: true, editing: a })}
           onChanged={refreshAssignments}
           courseName={course.name}
-          onOpenNote={onOpenNote}
+          onOpenNote={(id) => onOpenNote(id, { kind: "course", id: courseId, sub })}
         />
       )}
 
@@ -287,7 +287,7 @@ export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenN
       )}
 
       {sub === "notes" && (
-        <NoteList notes={myNotes} onChanged={refreshNotes} courseId={courseId} courseName={course.name} onOpenNote={onOpenNote} />
+        <NoteList notes={myNotes} onChanged={refreshNotes} courseId={courseId} courseName={course.name} onOpenNote={(id) => onOpenNote(id, { kind: "course", id: courseId, sub })} />
       )}
 
       {sub === "files" && (
@@ -300,7 +300,7 @@ export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenN
           onChanged={refreshProjects}
           courseId={courseId}
           courseName={course.name}
-          onOpenNote={onOpenNote}
+          onOpenNote={(id) => onOpenNote(id, { kind: "course", id: courseId, sub })}
         />
       )}
 
@@ -495,7 +495,7 @@ function AssignmentList({
   onEdit: (a: Assignment) => void;
   onChanged: () => void;
   courseName: string;
-  onOpenNote: (id: number) => void;
+  onOpenNote: (id: number, returnTo?: { kind: "course"; id: number; sub?: SubTab }) => void;
 }) {
   const { update } = useUpdate<Assignment>("/api/assignments");
   const { remove } = useDelete("/api/assignments");
@@ -680,7 +680,7 @@ function NoteList({
   onChanged: () => void;
   courseId: number;
   courseName: string;
-  onOpenNote: (id: number) => void;
+  onOpenNote: (id: number, returnTo?: { kind: "course"; id: number; sub?: SubTab }) => void;
 }) {
   const { remove } = useDelete("/api/notes");
 
@@ -1007,7 +1007,7 @@ function ProjectList({
   onChanged: () => void;
   courseId: number;
   courseName: string;
-  onOpenNote: (id: number) => void;
+  onOpenNote: (id: number, returnTo?: { kind: "course"; id: number; sub?: SubTab }) => void;
 }) {
   const { update } = useUpdate<Project>("/api/projects");
   const { remove } = useDelete("/api/projects");

@@ -13,4 +13,4 @@ export type Nav =
   | "settings"
   | { kind: "activity"; id: number }
   | { kind: "course"; id: number }
-  | { kind: "note"; id: number };
+  | { kind: "note"; id: number; returnTo?: Nav };
