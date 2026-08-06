@@ -4,7 +4,6 @@ import type { Nav } from "../lib/nav";
 const MAIN_ITEMS: { nav: Nav; label: string; icon: string }[] = [
   { nav: "today", label: "Today", icon: "📅" },
   { nav: "calendar", label: "Calendar", icon: "🗓️" },
-  { nav: "planner", label: "Planner", icon: "🧭" },
   { nav: "classes", label: "Classes", icon: "📚" },
   { nav: "homework", label: "Homework / Tests", icon: "✏️" },
   { nav: "tasks", label: "Tasks", icon: "🗂️" },
@@ -123,6 +122,17 @@ export function Sidebar({
           >
             <span>⚙️</span>
             Settings
+          </button>
+          <button
+            onClick={() => onNavigate("trash")}
+            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+              nav === "trash"
+                ? "bg-indigo-50 text-indigo-700"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            }`}
+          >
+            <span>🗑️</span>
+            Trash
           </button>
         </div>
       </nav>

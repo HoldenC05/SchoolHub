@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { api } from "../lib/api";
-import { useData } from "../lib/useData";
+import { invalidateCache, useData } from "../lib/useData";
 import type { Activity, Course, Todo, TodoStatus } from "../lib/types";
 import { dueBucket, fmtDue, PRIORITY_ORDER, priorityBadge } from "../lib/todos";
 import { TodoEdit, type TodoPayload } from "../components/TodoEdit";
@@ -38,7 +38,7 @@ export function TasksPage() {
   };
 
   const byStatus = (status: TodoStatus) =>
-    (data || [])
+    todos
       .filter((t) => t.status === status && inScope(t))
       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || a.id - b.id);
 
@@ -48,37 +48,51 @@ export function TasksPage() {
     return "";
   };
 
-  const moveCard = async (targetStatus: TodoStatus, targetId: number | null, before: boolean) => {
-    if (dragId === null) return;
-    const dragged = (data || []).find((t) => t.id === dragId);
+  const [localTodos, setLocalTodos] = useState<Todo[] | null>(null);
+  const todos = localTodos ?? data ?? [];
+
+  const moveCard = async (draggedId: number, targetStatus: TodoStatus, targetId: number | null, before: boolean) => {
+    const dragged = (data || []).find((t) => t.id === draggedId);
     if (!dragged) return;
 
-    const base = byStatus(targetStatus).filter((t) => t.id !== dragId);
-    let idx = base.length;
+    const targetColumn = (data || []).filter((t) => t.status === targetStatus && t.id !== draggedId);
+    let idx = targetColumn.length;
     if (targetId !== null) {
-      const ti = base.findIndex((t) => t.id === targetId);
+      const ti = targetColumn.findIndex((t) => t.id === targetId);
       if (ti >= 0) idx = before ? ti : ti + 1;
     }
-    const next = [...base.slice(0, idx), dragged, ...base.slice(idx)];
-    try {
-      for (let i = 0; i < next.length; i++) {
-        const t = next[i];
-        const patch: Partial<Todo> = { position: i };
-        if (t.status !== targetStatus) patch.status = targetStatus;
-        await api.update<Todo>(`/api/todos/${t.id}`, patch);
-      }
-    } catch (err) {
-      console.error("Failed to reorder todos:", err);
-    }
+    const moved = { ...dragged, status: targetStatus } as Todo;
+    const targetNext = [...targetColumn.slice(0, idx), moved, ...targetColumn.slice(idx)];
+    targetNext.forEach((t, i) => (t.position = i));
+
+    const next = (data || []).map((t) => (t.id === draggedId ? moved : t));
+    setLocalTodos(next);
     setDragId(null);
     setOver(null);
-    refresh();
+
+    try {
+      const patches = targetNext.map((t) =>
+        api.update<Todo>(`/api/todos/${t.id}`, {
+          position: t.position,
+          status: t.id === draggedId ? targetStatus : undefined,
+        }),
+      );
+      await Promise.all(patches);
+      invalidateCache("/api/todos");
+      setLocalTodos(null);
+      refresh();
+    } catch (err) {
+      console.error("Failed to reorder todos:", err);
+      setLocalTodos(null);
+      refresh();
+    }
   };
 
   const handleColumnDrop = (e: React.DragEvent, status: TodoStatus) => {
     e.preventDefault();
-    console.log("Column drop:", status);
-    void moveCard(status, null, false);
+    const id = Number(e.dataTransfer.getData("text/plain"));
+    if (isNaN(id)) return;
+    void moveCard(id, status, null, false);
   };
 
   const save = async (payload: TodoPayload) => {
@@ -193,6 +207,7 @@ export function TasksPage() {
                         }}
                         onDragOver={(e) => {
                           e.preventDefault();
+                          e.stopPropagation();
                           e.dataTransfer.dropEffect = "move";
                           const rect = e.currentTarget.getBoundingClientRect();
                           const before = e.clientY < rect.top + rect.height / 2;
@@ -205,12 +220,16 @@ export function TasksPage() {
                           const rect = e.currentTarget.getBoundingClientRect();
                           const before = e.clientY < rect.top + rect.height / 2;
                           const status = e.currentTarget.getAttribute("data-status") as TodoStatus;
-                          void moveCard(status, t.id, before);
+                          const draggedId = Number(e.dataTransfer.getData("text/plain"));
+                          if (isNaN(draggedId)) return;
+                          void moveCard(draggedId, status, t.id, before);
                         }}
                         onClick={() => setEditing(t)}
                         className={`cursor-grab rounded-lg border bg-white p-2.5 shadow-sm transition-shadow hover:shadow ${
                           t.status === "done" ? "opacity-60" : ""
-                        } ${showTop ? "border-t-2 border-indigo-500" : ""} ${showBottom ? "border-b-2 border-indigo-500" : ""}`}
+                        } ${dragId === t.id ? "opacity-40" : ""} ${
+                          showTop ? "border-t-2 border-indigo-500" : ""
+                        } ${showBottom ? "border-b-2 border-indigo-500" : ""}`}
                         title="Drag to reorder or to another column, click to edit"
                       >
                         <div className="flex items-start gap-2">

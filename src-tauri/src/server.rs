@@ -3,7 +3,7 @@ use axum::{
     http::{header::AUTHORIZATION, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{delete, get},
     Json, Router,
 };
 use axum::extract::DefaultBodyLimit;
@@ -206,12 +206,68 @@ fn extract_readable_html(bytes: &[u8]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+async fn list_trash(State(state): State<AppState>) -> Response {
+    let conn = match state.db.lock() {
+        Ok(c) => c,
+        Err(e) => return api_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    };
+    let _ = db::purge_expired(&conn, 30);
+    match db::list_trash(&conn) {
+        Ok(rows) => Json(rows).into_response(),
+        Err(e) => api_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
+}
+
+async fn restore_trash(
+    State(state): State<AppState>,
+    Path((table, row_id)): Path<(String, i64)>,
+) -> Response {
+    if !db::valid_table(&table) {
+        return api_error(StatusCode::NOT_FOUND, format!("unknown resource: {table}"));
+    }
+    let conn = match state.db.lock() {
+        Ok(c) => c,
+        Err(e) => return api_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    };
+    match db::restore(&conn, &table, row_id) {
+        Ok(true) => (StatusCode::CREATED, Json(json!({ "restored": true }))).into_response(),
+        Ok(false) => api_error(StatusCode::NOT_FOUND, "not in trash"),
+        Err(e) => api_error(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+async fn purge_trash(State(state): State<AppState>, Path(id): Path<i64>) -> Response {
+    let conn = match state.db.lock() {
+        Ok(c) => c,
+        Err(e) => return api_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    };
+    match db::purge_one(&conn, id) {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => api_error(StatusCode::NOT_FOUND, "not found"),
+        Err(e) => api_error(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+async fn empty_trash(State(state): State<AppState>) -> Response {
+    let conn = match state.db.lock() {
+        Ok(c) => c,
+        Err(e) => return api_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    };
+    match db::purge_all(&conn) {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => api_error(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
 pub fn api_router(state: AppState) -> Router {
     let api = Router::new()
         .route("/api/{table}", get(list).post(create))
         .route("/api/{table}/{id}", get(get_one).patch(update).delete(remove))
         .route("/api/files/{id}/raw", get(file_raw))
         .route("/api/files/{id}/text", get(file_text))
+        .route("/api/trash", get(list_trash).delete(empty_trash))
+        .route("/api/trash/{table}/{row_id}/restore", axum::routing::post(restore_trash))
+        .route("/api/trash/{id}", delete(purge_trash))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth))
         .with_state(state);
 
@@ -381,6 +437,73 @@ mod tests {
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn trash_restores_deleted_row() {
+        let app = test_app("secret-token");
+        let (_, created) = send(
+            &app,
+            "POST",
+            "/api/courses",
+            "secret-token",
+            Some(json!({ "name": "Physics", "teacher": "Dr. Sato" })),
+        )
+        .await;
+        let id = created["id"].as_i64().unwrap();
+
+        let (status, _) = send(&app, "DELETE", &format!("/api/courses/{id}"), "secret-token", None).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        let (status, trash) = send(&app, "GET", "/api/trash", "secret-token", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(trash.as_array().unwrap().len(), 1);
+        assert_eq!(trash[0]["table_name"], json!("courses"));
+        assert_eq!(trash[0]["row_id"], json!(id));
+
+        let (status, _) = send(
+            &app,
+            "POST",
+            &format!("/api/trash/courses/{id}/restore"),
+            "secret-token",
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+
+        let (status, one) = send(&app, "GET", &format!("/api/courses/{id}"), "secret-token", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(one["name"], json!("Physics"));
+        assert_eq!(one["teacher"], json!("Dr. Sato"));
+
+        let (status, trash) = send(&app, "GET", "/api/trash", "secret-token", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(trash.as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn trash_purge_and_empty() {
+        let app = test_app("secret-token");
+        let (_, created) = send(
+            &app,
+            "POST",
+            "/api/ideas",
+            "secret-token",
+            Some(json!({ "title": "book idea" })),
+        )
+        .await;
+        let id = created["id"].as_i64().unwrap();
+        send(&app, "DELETE", &format!("/api/ideas/{id}"), "secret-token", None).await;
+
+        let (_, trash) = send(&app, "GET", "/api/trash", "secret-token", None).await;
+        assert_eq!(trash.as_array().unwrap().len(), 1);
+        let trash_id = trash[0]["id"].as_i64().unwrap();
+
+        let (status, _) = send(&app, "DELETE", &format!("/api/trash/{trash_id}"), "secret-token", None).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+
+        let (_, trash) = send(&app, "GET", "/api/trash", "secret-token", None).await;
+        assert_eq!(trash.as_array().unwrap().len(), 0);
     }
 
     #[tokio::test]

@@ -1,3 +1,5 @@
+import { pushUndo } from "./undo";
+
 export const isTauri = () => "__TAURI_INTERNALS__" in window;
 
 export function apiBase(): string {
@@ -75,5 +77,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
-  remove: (path: string) => request<void>(path, { method: "DELETE" }),
+  remove: async (path: string): Promise<void> => {
+    const m = /^\/api\/([a-z_]+)\/(\d+)$/.exec(path);
+    await request<void>(path, { method: "DELETE" });
+    if (m && m[1] !== "trash") {
+      pushUndo(m[1], Number(m[2]));
+    }
+  },
 };

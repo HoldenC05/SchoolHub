@@ -174,6 +174,14 @@ export interface AppSettings {
   updated_at: string;
 }
 
+export interface TrashItem {
+  id: number;
+  table_name: string;
+  row_id: number;
+  label: string;
+  deleted_at: string;
+}
+
 export const KIND_LABELS: Record<AssignmentKind, string> = {
   homework: "Homework",
   test: "Test",

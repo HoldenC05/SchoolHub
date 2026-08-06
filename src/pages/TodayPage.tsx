@@ -2,6 +2,7 @@ import { useData } from "../lib/useData";
 import type { AppSettings, Assignment, CalendarEvent, Meeting } from "../lib/types";
 import { KIND_LABELS } from "../lib/types";
 import { Card, EmptyState, Pill } from "../components/ui";
+import { BibleVerse } from "../components/BibleVerse";
 
 function fmtDate(s: string | null): string {
   if (!s) return "No date";
@@ -107,6 +108,8 @@ export function TodayPage() {
           })}
         </p>
       </header>
+
+      <BibleVerse />
 
       <section>
         <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-slate-500">

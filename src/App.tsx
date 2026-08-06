@@ -11,7 +11,6 @@ import { Sidebar } from "./components/Sidebar";
 import { PairingScreen } from "./components/PairingScreen";
 import { TodayPage } from "./pages/TodayPage";
 import { CalendarPage } from "./pages/CalendarPage";
-import { PlannerPage } from "./pages/PlannerPage";
 import { ClassesPage } from "./pages/ClassesPage";
 import { HomeworkTestsPage } from "./pages/HomeworkTestsPage";
 import { TasksHubPage } from "./pages/TasksHubPage";
@@ -23,10 +22,13 @@ import { ActivityPage } from "./pages/ActivityPage";
 import { CoursePage } from "./pages/CoursePage";
 import { IntegrationsPage } from "./pages/IntegrationsPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { TrashPage } from "./pages/TrashPage";
 import { ProjectPage } from "./pages/ProjectPage";
 import { MeetingPage } from "./pages/MeetingPage";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { RunningTimer } from "./components/RunningTimer";
+import { UndoToast } from "./components/UndoToast";
+import { VerseToast } from "./components/BibleVerse";
 
 function App() {
   const [nav, setNav] = useState<Nav>("today");
@@ -104,8 +106,7 @@ function App() {
   let page: ReactNode;
   if (nav === "today") page = <TodayPage />;
   else if (nav === "calendar") page = <CalendarPage />;
-  else if (nav === "planner") page = <PlannerPage />;
-else if (nav === "classes")
+  else if (nav === "classes")
     page = <ClassesPage onOpenCourse={(id) => navigate({ kind: "course", id })} />;
   else if (nav === "homework") page = <HomeworkTestsPage />;
   else if (nav === "tasks") page = <TasksHubPage />;
@@ -123,6 +124,7 @@ else if (nav === "classes")
     page = <ActivitiesPage onOpenActivity={(id) => navigate({ kind: "activity", id })} />;
   else if (nav === "integrations") page = <IntegrationsPage />;
   else if (nav === "settings") page = <SettingsPage />;
+  else if (nav === "trash") page = <TrashPage />;
   else if (typeof nav === "object" && nav.kind === "course")
     page = <CoursePage courseId={nav.id} onOpenNote={(id, returnTo) => navigate({ kind: "note", id, returnTo: returnTo ?? nav })} />;
   else if (typeof nav === "object" && nav.kind === "note")
@@ -180,6 +182,8 @@ else if (nav === "classes")
         </div>
 
         <RunningTimer onOpen={() => navigate("tracker")} />
+        <UndoToast />
+        <VerseToast />
       </div>
     </ErrorBoundary>
   );

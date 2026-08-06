@@ -257,7 +257,7 @@ function CalendarSection() {
         <div className="min-w-0 flex-1">
           <p className="font-medium text-slate-900">Apple Calendar (iCloud)</p>
           <p className="text-sm text-slate-500">
-            Connected through your Mac. Events synced from iCloud appear in Today and Planner.
+            Connected through your Mac. Events synced from iCloud appear in Today and Calendar.
           </p>
         </div>
       </Card>

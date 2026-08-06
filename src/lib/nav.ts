@@ -1,7 +1,6 @@
 export type Nav =
   | "today"
   | "calendar"
-  | "planner"
   | "classes"
   | "homework"
   | "tasks"
@@ -11,6 +10,7 @@ export type Nav =
   | "activities"
   | "integrations"
   | "settings"
+  | "trash"
   | { kind: "activity"; id: number; sub?: string }
   | { kind: "course"; id: number; sub?: string }
   | { kind: "note"; id: number; returnTo?: Nav }

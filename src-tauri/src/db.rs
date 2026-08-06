@@ -231,6 +231,15 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE meetings ADD COLUMN location TEXT;",
     "ALTER TABLE meetings ADD COLUMN attendees TEXT;",
     "ALTER TABLE projects ADD COLUMN color TEXT;",
+    "CREATE TABLE IF NOT EXISTS trash (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        table_name TEXT NOT NULL,
+        row_id INTEGER NOT NULL,
+        label TEXT NOT NULL DEFAULT '',
+        payload TEXT NOT NULL,
+        deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_trash_deleted_at ON trash (deleted_at);",
 ];
 
 pub fn init(path: &Path) -> rusqlite::Result<Db> {
@@ -242,6 +251,7 @@ pub fn init(path: &Path) -> rusqlite::Result<Db> {
     let _ = conn.pragma_update(None, "foreign_keys", "ON");
     migrate(&conn)?;
     let _ = conn.execute("INSERT OR IGNORE INTO settings (id) VALUES (1)", []);
+    let _ = purge_expired(&conn, 30);
     Ok(Arc::new(Mutex::new(conn)))
 }
 
@@ -478,9 +488,98 @@ pub fn delete(conn: &Connection, table: &str, id: i64) -> Result<bool, String> {
     if !valid_table(table) {
         return Err(format!("unknown table: {table}"));
     }
+    let existing = get_one(conn, table, id).map_err(|e| e.to_string())?;
+    let Some(row) = existing else {
+        return Ok(false);
+    };
+    let label = row
+        .get("title")
+        .and_then(Json::as_str)
+        .or_else(|| row.get("name").and_then(Json::as_str))
+        .unwrap_or("")
+        .to_string();
+    let payload = row.to_string();
+    conn.execute(
+        "INSERT INTO trash (table_name, row_id, label, payload, deleted_at) \
+         VALUES (?1, ?2, ?3, ?4, datetime('now'))",
+        rusqlite::params![table, id, label, payload],
+    )
+    .map_err(|e| e.to_string())?;
     let sql = format!("DELETE FROM {table} WHERE id = ?1");
     let changed = conn.execute(&sql, [id]).map_err(|e| e.to_string())?;
     Ok(changed > 0)
+}
+
+pub fn list_trash(conn: &Connection) -> rusqlite::Result<Vec<Json>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, table_name, row_id, label, deleted_at FROM trash ORDER BY deleted_at DESC, id DESC",
+    )?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(serde_json::json!({
+            "id": row.get::<_, i64>(0)?,
+            "table_name": row.get::<_, String>(1)?,
+            "row_id": row.get::<_, i64>(2)?,
+            "label": row.get::<_, String>(3)?,
+            "deleted_at": row.get::<_, String>(4)?,
+        }));
+    }
+    Ok(out)
+}
+
+pub fn restore(conn: &Connection, table: &str, row_id: i64) -> Result<bool, String> {
+    if !valid_table(table) {
+        return Err(format!("unknown table: {table}"));
+    }
+    let payload: String = conn
+        .query_row(
+            "SELECT payload FROM trash WHERE table_name = ?1 AND row_id = ?2 ORDER BY id DESC LIMIT 1",
+            rusqlite::params![table, row_id],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let obj = serde_json::from_str::<Json>(&payload)
+        .map_err(|e| e.to_string())?
+        .as_object()
+        .cloned()
+        .ok_or_else(|| "trash payload is not an object".to_string())?;
+    let columns: Vec<&String> = obj.keys().collect();
+    let values: Vec<SqlValue> = obj.values().map(json_to_sql).collect();
+    let placeholders = vec!["?"; columns.len()].join(",");
+    let sql = format!(
+        "INSERT INTO {table} ({}) VALUES ({})",
+        columns.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(","),
+        placeholders
+    );
+    conn.execute(&sql, params_from_iter(values.iter()))
+        .map_err(|e| format!("restore failed: {e}"))?;
+    conn.execute(
+        "DELETE FROM trash WHERE table_name = ?1 AND row_id = ?2",
+        rusqlite::params![table, row_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+pub fn purge_one(conn: &Connection, trash_id: i64) -> Result<bool, String> {
+    let changed = conn
+        .execute("DELETE FROM trash WHERE id = ?1", [trash_id])
+        .map_err(|e| e.to_string())?;
+    Ok(changed > 0)
+}
+
+pub fn purge_all(conn: &Connection) -> Result<usize, String> {
+    conn.execute("DELETE FROM trash", [])
+        .map_err(|e| e.to_string())
+}
+
+pub fn purge_expired(conn: &Connection, days: i64) -> Result<usize, String> {
+    conn.execute(
+        "DELETE FROM trash WHERE deleted_at < datetime('now', ?1)",
+        rusqlite::params![format!("-{days} days")],
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

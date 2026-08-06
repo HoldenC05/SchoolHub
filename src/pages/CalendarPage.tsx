@@ -552,6 +552,20 @@ function MeetingModal({
     }
   };
 
+  const remove = async () => {
+    if (!state) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.remove(`/api/meetings/${state.id}`);
+      onDone();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+    }
+  };
+
   return (
     <Modal open={open} onClose={onClose} title="Edit meeting">
       <form
@@ -579,9 +593,18 @@ function MeetingModal({
           <textarea className={inputStyles + " min-h-16 resize-y"} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </Field>
         {error && <p className="text-xs text-rose-600">{error}</p>}
-        <div className="flex justify-end gap-2 pt-1">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save changes"}</Button>
+        <div className="flex items-center justify-between gap-2 pt-1">
+          <button
+            type="button"
+            onClick={remove}
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50"
+          >
+            {busy ? "Deleting…" : "Delete"}
+          </button>
+          <div className="ml-auto flex gap-2">
+            <Button variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save changes"}</Button>
+          </div>
         </div>
       </form>
     </Modal>
@@ -591,9 +614,30 @@ function MeetingModal({
 const inputStyles =
   "rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-indigo-500";
 
-function ItemChip({ item, onClick }: { item: CalItem; onClick: () => void }) {
+function ItemChip({
+  item,
+  onClick,
+  onDragStart,
+  onDragEnd,
+}: {
+  item: CalItem;
+  onClick: () => void;
+  onDragStart?: (e: React.DragEvent, item: CalItem) => void;
+  onDragEnd?: () => void;
+}) {
+  const draggable = onDragStart !== undefined;
   return (
     <button
+      draggable={draggable}
+      onDragStart={(e) => {
+        if (!draggable) return;
+        e.stopPropagation();
+        onDragStart(e, item);
+      }}
+      onDragEnd={(e) => {
+        e.stopPropagation();
+        onDragEnd?.();
+      }}
       onClick={(e) => {
         e.stopPropagation();
         onClick();
@@ -613,15 +657,23 @@ function DayColumn({
   items,
   isToday,
   drag,
+  dragItem,
   onMouseDown,
   onItemClick,
+  onItemDragStart,
+  onItemDragEnd,
+  onItemDrop,
 }: {
   dayKey: string;
   items: CalItem[];
   isToday: boolean;
   drag: { startMin: number; curMin: number } | null;
+  dragItem: CalItem | null;
   onMouseDown: (e: ReactMouseEvent<HTMLDivElement>) => void;
   onItemClick: (it: CalItem) => void;
+  onItemDragStart: (e: React.DragEvent, it: CalItem) => void;
+  onItemDragEnd: () => void;
+  onItemDrop: (it: CalItem, dayKey: string, startMin: number) => void;
 }) {
   const allDay = items.filter((i) => i.allDay);
   const timed = useMemo(() => items.filter((i) => !i.allDay && dayKeyOf(i.start) === dayKey), [items, dayKey]);
@@ -686,16 +738,48 @@ function DayColumn({
   return (
     <div className="flex min-w-0 flex-1 flex-col border-r border-slate-200 last:border-r-0">
       {allDay.length > 0 && (
-        <div className="flex flex-col gap-0.5 border-b border-slate-200 px-1 py-1">
+        <div
+          className="flex flex-col gap-0.5 border-b border-slate-200 px-1 py-1"
+          onDragOver={(e) => {
+            if (!dragItem) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+          }}
+          onDrop={(e) => {
+            if (!dragItem) return;
+            e.preventDefault();
+            onItemDrop(dragItem, dayKey, 0);
+          }}
+        >
           {allDay.map((it) => (
-            <ItemChip key={it.key} item={it} onClick={() => onItemClick(it)} />
+            <ItemChip
+              key={it.key}
+              item={it}
+              onClick={() => onItemClick(it)}
+              onDragStart={dragItem ? undefined : onItemDragStart}
+              onDragEnd={onItemDragEnd}
+            />
           ))}
         </div>
       )}
       <div
-        className={`relative cursor-crosshair select-none ${isToday ? "bg-indigo-50/60" : ""}`}
+        className={`relative cursor-crosshair select-none ${isToday ? "bg-indigo-50/60" : ""} ${
+          dragItem ? "cursor-grabbing" : ""
+        }`}
         style={{ height: DAY_H }}
         onMouseDown={onMouseDown}
+        onDragOver={(e) => {
+          if (!dragItem) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+        }}
+        onDrop={(e) => {
+          if (!dragItem) return;
+          e.preventDefault();
+          const rect = e.currentTarget.getBoundingClientRect();
+          const min = snapMinutes(((e.clientY - rect.top) / rect.height) * 1440);
+          onItemDrop(dragItem, dayKey, min);
+        }}
       >
         {HOURS.map((h) => (
           <div key={h} className="absolute left-0 right-0 border-t border-slate-200" style={{ top: h * HOUR_H }} />
@@ -715,6 +799,16 @@ function DayColumn({
           return (
             <button
               key={it.key}
+              draggable={it.kind !== "assignment" && !dragItem}
+              onDragStart={(e) => {
+                if (it.kind === "assignment" || dragItem) return;
+                e.stopPropagation();
+                onItemDragStart(e, it);
+              }}
+              onDragEnd={(e) => {
+                e.stopPropagation();
+                onItemDragEnd();
+              }}
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
@@ -803,6 +897,10 @@ export function CalendarPage() {
   const dragRectRef = useRef<DOMRect | null>(null);
   const dragRef = useRef(drag);
   dragRef.current = drag;
+
+  const [dragItem, setDragItem] = useState<CalItem | null>(null);
+  const dragItemRef = useRef(dragItem);
+  dragItemRef.current = dragItem;
 
   const tauri = isTauri();
 
@@ -897,6 +995,80 @@ export function CalendarPage() {
       window.removeEventListener("mouseup", up);
     };
   }, [drag, pushHref]);
+
+  const handleItemDragStart = (e: React.DragEvent, it: CalItem) => {
+    if (it.kind === "event" && !tauri) return;
+    setDragItem(it);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", `move:${it.kind}:${it.id}`);
+  };
+
+  const handleItemDragEnd = () => setDragItem(null);
+
+  const handleItemDrop = async (it: CalItem, dayKey: string, startMin: number) => {
+    setDragItem(null);
+    const day = parseDate(dayKey);
+    if (!day) return;
+    try {
+      if (it.allDay) {
+        const startStr = toDateInput(day);
+        const endStr = toDateInput(addDays(day, 1));
+        if (it.kind === "meeting") {
+          await api.update<Meeting>(`/api/meetings/${it.id}`, {
+            starts_at: startStr,
+            ends_at: endStr,
+          });
+          refresh();
+        } else if (it.kind === "event") {
+          const ev = events.data?.find((e) => e.id === it.id);
+          if (!ev) return;
+          await invoke<CalendarEvent>("cal_event_update", {
+            id: it.id,
+            title: ev.summary ?? "",
+            startsAt: startStr,
+            endsAt: endStr,
+            allDay: true,
+            location: ev.location ?? null,
+            notes: ev.description ?? null,
+            rrule: ev.rrule ?? null,
+            exdates: ev.exdates ?? null,
+          });
+          refresh();
+        }
+        return;
+      }
+      const durMin =
+        it.end && it.end.getTime() > it.start.getTime()
+          ? Math.round((it.end.getTime() - it.start.getTime()) / 60000)
+          : 30;
+      const start = new Date(day.getFullYear(), day.getMonth(), day.getDate(), Math.floor(startMin / 60), startMin % 60);
+      const end = new Date(start.getTime() + Math.max(durMin, 15) * 60000);
+      if (it.kind === "meeting") {
+        await api.update<Meeting>(`/api/meetings/${it.id}`, {
+          starts_at: toLocalInput(start),
+          ends_at: toLocalInput(end),
+        });
+        refresh();
+      } else if (it.kind === "event") {
+        const ev = events.data?.find((e) => e.id === it.id);
+        if (!ev) return;
+        await invoke<CalendarEvent>("cal_event_update", {
+          id: it.id,
+          title: ev.summary ?? "",
+          startsAt: toLocalInput(start),
+          endsAt: toLocalInput(end),
+          allDay: false,
+          location: ev.location ?? null,
+          notes: ev.description ?? null,
+          rrule: ev.rrule ?? null,
+          exdates: ev.exdates ?? null,
+        });
+        refresh();
+      }
+    } catch (err) {
+      console.error("Failed to move item:", err);
+    }
+  };
 
   const items = useMemo<CalItem[]>(() => {
     const out: CalItem[] = [];
@@ -1232,9 +1404,20 @@ export function CalendarPage() {
                       setAnchor(c.date);
                       setSelectedDay(c.key);
                     }}
+                    onDragOver={(e) => {
+                      if (!dragItem) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                    }}
+                    onDrop={(e) => {
+                      if (!dragItem) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleItemDrop(dragItem, c.key, 0);
+                    }}
                     className={`flex min-h-20 flex-col items-stretch gap-1 border-b border-r border-slate-200 p-1.5 text-left transition-colors last:border-r-0 hover:bg-slate-100 ${
                       c.inMonth ? "bg-transparent" : "bg-slate-100/60"
-                    }`}
+                    } ${dragItem ? "cursor-grabbing" : ""}`}
                   >
                     <span
                       className={`self-start rounded-full px-1.5 py-0.5 text-xs font-medium ${
@@ -1245,7 +1428,13 @@ export function CalendarPage() {
                     </span>
                     <div className="min-h-0 flex-1 space-y-0.5 overflow-hidden">
                       {items.slice(0, 3).map((it) => (
-                        <ItemChip key={it.key} item={it} onClick={() => openItem(it)} />
+                        <ItemChip
+                          key={it.key}
+                          item={it}
+                          onClick={() => openItem(it)}
+                          onDragStart={dragItem ? undefined : handleItemDragStart}
+                          onDragEnd={handleItemDragEnd}
+                        />
                       ))}
                       {items.length > 3 && (
                         <span className="block px-1 text-[11px] text-slate-500">+{items.length - 3} more</span>
@@ -1296,8 +1485,12 @@ export function CalendarPage() {
                     items={byDayKey(d.key)}
                     isToday={d.key === todayKey}
                     drag={drag?.dayKey === d.key ? drag : null}
+                    dragItem={dragItem}
                     onMouseDown={(e) => beginDrag(d.key, e)}
                     onItemClick={openItem}
+                    onItemDragStart={handleItemDragStart}
+                    onItemDragEnd={handleItemDragEnd}
+                    onItemDrop={handleItemDrop}
                   />
                 ))}
               </div>
@@ -1331,8 +1524,12 @@ export function CalendarPage() {
                   items={byDayKey(dayKey(anchor))}
                   isToday={dayKey(anchor) === todayKey}
                   drag={drag?.dayKey === dayKey(anchor) ? drag : null}
+                  dragItem={dragItem}
                   onMouseDown={(e) => beginDrag(dayKey(anchor), e)}
                   onItemClick={openItem}
+                  onItemDragStart={handleItemDragStart}
+                  onItemDragEnd={handleItemDragEnd}
+                  onItemDrop={handleItemDrop}
                 />
               </div>
             </div>
@@ -1347,7 +1544,21 @@ export function CalendarPage() {
               const isToday = d.key === todayKey;
               return (
                 <div key={d.key} className="flex gap-3">
-                  <div className="w-28 shrink-0 pt-1 text-right">
+                  <div
+                    className={`w-28 shrink-0 pt-1 text-right ${dragItem ? "cursor-grabbing" : ""}`}
+                    onDragOver={(e) => {
+                      if (!dragItem) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                    }}
+                    onDrop={(e) => {
+                      if (!dragItem) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const startMin = dragItem.start.getHours() * 60 + dragItem.start.getMinutes();
+                      handleItemDrop(dragItem, d.key, startMin);
+                    }}
+                  >
                     <p className={`text-sm font-semibold ${isToday ? "text-indigo-600" : "text-slate-700"}`}>
                       {d.date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
                     </p>
@@ -1378,8 +1589,17 @@ export function CalendarPage() {
                       return (
                         <div
                           key={it.key}
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.effectAllowed = "move";
+                            e.dataTransfer.setData("text/plain", `move:${it.kind}:${it.id}`);
+                            setDragItem(it);
+                          }}
+                          onDragEnd={() => setDragItem(null)}
                           onClick={() => openItem(it)}
-                          className="flex items-center gap-2.5 rounded-lg px-3 py-2 transition-colors hover:bg-slate-100"
+                          className={`flex items-center gap-2.5 rounded-lg px-3 py-2 transition-colors hover:bg-slate-100 ${
+                            dragItem?.id === it.id ? "opacity-40" : ""
+                          }`}
                         >
                           <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: it.color }} />
                           <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">{it.title}</span>

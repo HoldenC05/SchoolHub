@@ -3,12 +3,18 @@ import { api } from "./api";
 
 const cache = new Map<string, unknown>();
 const inflight = new Map<string, Promise<unknown>>();
+const refreshListeners = new Set<() => void>();
 
 export function invalidateCache(path: string) {
   cache.delete(path);
   for (const key of cache.keys()) {
     if (key.startsWith(`${path}/`)) cache.delete(key);
   }
+}
+
+export function refreshAll() {
+  cache.clear();
+  for (const listener of refreshListeners) listener();
 }
 
 export function useData<T>(path: string, reloadKey = 0) {
@@ -43,6 +49,13 @@ export function useData<T>(path: string, reloadKey = 0) {
   useEffect(() => {
     refresh();
   }, [refresh, reloadKey]);
+
+  useEffect(() => {
+    refreshListeners.add(refresh);
+    return () => {
+      refreshListeners.delete(refresh);
+    };
+  }, [refresh]);
 
   return { data, loading, error, refresh };
 }
