@@ -19,6 +19,7 @@ import type {
   Todo,
 } from "../lib/types";
 import { KIND_LABELS, STATUS_LABELS } from "../lib/types";
+import type { Nav } from "../lib/nav";
 import {
   Button,
   Card,
@@ -103,7 +104,7 @@ const KIND_DOT: Record<AssignmentKind | "meeting", string> = {
 
 const STATUS_ORDER: AssignmentStatus[] = ["todo", "in_progress", "done", "graded"];
 
-export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenNote: (id: number, returnTo?: { kind: "course"; id: number; sub?: SubTab }) => void }) {
+export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenNote: (id: number, returnTo?: Nav) => void }) {
   const { data: course } = useData<Course>(`/api/courses/${courseId}`);
   const { data: assignments, refresh: refreshAssignments } = useData<Assignment[]>("/api/assignments");
   const { data: meetings, refresh: refreshMeetings } = useData<Meeting[]>("/api/meetings");
@@ -283,6 +284,7 @@ export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenN
           onAdd={() => setMeetingModal({ open: true, editing: null })}
           onEdit={(m) => setMeetingModal({ open: true, editing: m })}
           onChanged={refreshMeetings}
+          onOpenNote={(id) => onOpenNote(id, { kind: "meeting", id })}
         />
       )}
 
@@ -618,11 +620,13 @@ function MeetingList({
   onAdd,
   onEdit,
   onChanged,
+  onOpenNote,
 }: {
   meetings: Meeting[];
   onAdd: () => void;
   onEdit: (m: Meeting) => void;
   onChanged: () => void;
+  onOpenNote: (id: number, returnTo?: Nav) => void;
 }) {
   const { remove } = useDelete("/api/meetings");
   const [expanded, setExpanded] = useState<number | null>(null);
@@ -634,9 +638,9 @@ function MeetingList({
       {meetings.length === 0 ? (
         <EmptyState icon="🤝" title="No meetings" hint="Add the first one" />
       ) : (
-        meetings.map((m) => (
-          <div key={m.id}>
-            <Card className="group flex items-start justify-between gap-3">
+meetings.map((m) => (
+            <div key={m.id}>
+              <Card className="group flex items-start justify-between gap-3 cursor-pointer" onClick={() => onOpenNote(m.id)}>
               <div className="min-w-0">
                 <p className="font-medium text-slate-900">{m.title}</p>
                 <p className="text-xs text-slate-500">{fmtWhen(m.starts_at)}</p>
@@ -1007,7 +1011,7 @@ function ProjectList({
   onChanged: () => void;
   courseId: number;
   courseName: string;
-  onOpenNote: (id: number, returnTo?: { kind: "course"; id: number; sub?: SubTab }) => void;
+  onOpenNote: (id: number, returnTo?: Nav) => void;
 }) {
   const { update } = useUpdate<Project>("/api/projects");
   const { remove } = useDelete("/api/projects");
@@ -1045,8 +1049,8 @@ function ProjectList({
       ) : (
         projects.map((p) => (
           <div key={p.id}>
-            <Card className="group flex items-center justify-between gap-3">
-              <button onClick={() => cycleStatus(p)} className="flex min-w-0 flex-1 items-center gap-3 text-left" title="Click to change status">
+            <Card className="group flex items-center justify-between gap-3 cursor-pointer" onClick={() => onOpenNote(p.id)}>
+              <button onClick={(e) => { e.stopPropagation(); cycleStatus(p); }} className="flex min-w-0 flex-1 items-center gap-3 text-left" title="Click to change status">
                 <span
                   className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
                     p.status === "done" ? "border-emerald-500 bg-emerald-100" : "border-slate-300"

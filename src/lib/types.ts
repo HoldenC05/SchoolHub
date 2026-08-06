@@ -48,6 +48,8 @@ export interface Meeting {
   ends_at: string | null;
   agenda: string | null;
   notes: string | null;
+  location: string | null;
+  attendees: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -73,6 +75,7 @@ export interface Project {
   status: string;
   deadline: string | null;
   notes: string | null;
+  color: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -114,6 +117,7 @@ export interface Todo {
   id: number;
   entity_type: string | null;
   entity_id: number | null;
+  activity_id: number | null;
   title: string;
   status: TodoStatus;
   priority: number;

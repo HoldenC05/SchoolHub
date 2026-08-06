@@ -60,11 +60,15 @@ export function TasksPage() {
       if (ti >= 0) idx = before ? ti : ti + 1;
     }
     const next = [...base.slice(0, idx), dragged, ...base.slice(idx)];
-    for (let i = 0; i < next.length; i++) {
-      const t = next[i];
-      const patch: Partial<Todo> = { position: i };
-      if (t.status !== targetStatus) patch.status = targetStatus;
-      await api.update<Todo>(`/api/todos/${t.id}`, patch);
+    try {
+      for (let i = 0; i < next.length; i++) {
+        const t = next[i];
+        const patch: Partial<Todo> = { position: i };
+        if (t.status !== targetStatus) patch.status = targetStatus;
+        await api.update<Todo>(`/api/todos/${t.id}`, patch);
+      }
+    } catch (err) {
+      console.error("Failed to reorder todos:", err);
     }
     setDragId(null);
     setOver(null);
@@ -73,6 +77,7 @@ export function TasksPage() {
 
   const handleColumnDrop = (e: React.DragEvent, status: TodoStatus) => {
     e.preventDefault();
+    console.log("Column drop:", status);
     void moveCard(status, null, false);
   };
 
@@ -180,6 +185,7 @@ export function TasksPage() {
                         onDragStart={(e) => {
                           setDragId(t.id);
                           e.dataTransfer.effectAllowed = "move";
+                          e.dataTransfer.setData("text/plain", t.id.toString());
                         }}
                         onDragEnd={() => {
                           setDragId(null);

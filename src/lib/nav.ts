@@ -11,6 +11,8 @@ export type Nav =
   | "activities"
   | "integrations"
   | "settings"
-  | { kind: "activity"; id: number }
-  | { kind: "course"; id: number }
-  | { kind: "note"; id: number; returnTo?: Nav };
+  | { kind: "activity"; id: number; sub?: string }
+  | { kind: "course"; id: number; sub?: string }
+  | { kind: "note"; id: number; returnTo?: Nav }
+  | { kind: "project"; id: number }
+  | { kind: "meeting"; id: number };

@@ -3,7 +3,7 @@ import { api } from "../lib/api";
 import { useData } from "../lib/useData";
 import type { TimeEntry } from "../lib/types";
 import { entryDuration, fmtDuration, fmtDurationClock, fmtEntryDate, isRunning } from "../lib/time";
-import { Button } from "./ui";
+import { Button, Card } from "./ui";
 
 export function TimeSection({
   entityType,
@@ -54,6 +54,31 @@ export function TimeSection({
 
   const recent = [...mine].sort((a, b) => b.started_at.localeCompare(a.started_at)).slice(0, 8);
 
+  const stats = useMemo(() => {
+    const day = new Date();
+    day.setHours(0, 0, 0, 0);
+    const week = new Date(day);
+    week.setDate(week.getDate() - week.getDay());
+    let today = 0;
+    let thisWeek = 0;
+    let all = 0;
+    const byDay = new Map<string, number>();
+    for (const e of mine) {
+      const dur = entryDuration(e, now);
+      const start = new Date(e.started_at);
+      const dayKey = start.toISOString().slice(0, 10);
+      all += dur;
+      if (start >= day) today += dur;
+      if (start >= week) thisWeek += dur;
+      byDay.set(dayKey, (byDay.get(dayKey) ?? 0) + dur);
+    }
+    const dayBreakdown = [...byDay.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .slice(0, 7)
+      .map(([date, seconds]) => ({ date, seconds }));
+    return { today, thisWeek, all, dayBreakdown };
+  }, [mine, now]);
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -75,6 +100,25 @@ export function TimeSection({
           <Button onClick={() => void start()}>▶ Start timer</Button>
         )}
       </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        <Card className="p-3"><p className="text-xl font-bold text-slate-900">{fmtDuration(stats.today)}</p><p className="text-xs text-slate-500">Today</p></Card>
+        <Card className="p-3"><p className="text-xl font-bold text-slate-900">{fmtDuration(stats.thisWeek)}</p><p className="text-xs text-slate-500">This week</p></Card>
+        <Card className="p-3"><p className="text-xl font-bold text-slate-900">{fmtDuration(stats.all)}</p><p className="text-xs text-slate-500">All time</p></Card>
+      </div>
+
+      {stats.dayBreakdown.length > 0 && (
+        <Card className="space-y-2 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Last 7 days</p>
+          {stats.dayBreakdown.map((d) => (
+            <div key={d.date} className="flex items-center justify-between text-sm">
+              <span className="text-slate-600">{new Date(d.date + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</span>
+              <span className="font-medium text-slate-800">{fmtDuration(d.seconds)}</span>
+            </div>
+          ))}
+        </Card>
+      )}
+
       {recent.length === 0 ? (
         <p className="text-sm text-slate-500">No time tracked for this {entityType} yet.</p>
       ) : (

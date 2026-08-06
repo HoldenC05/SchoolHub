@@ -189,7 +189,7 @@ function ToolbarBtn({
   );
 }
 
-function Toolbar({ editor }: { editor: Editor | null }) {
+function Toolbar({ editor, onClose }: { editor: Editor | null; onClose?: () => void }) {
   if (!editor) return null;
   const link = () => {
     const url = window.prompt("Link URL", editor.getAttributes("link").href || "https://");
@@ -202,6 +202,16 @@ function Toolbar({ editor }: { editor: Editor | null }) {
   };
   return (
     <div className="flex flex-wrap items-center gap-0.5 border-b border-slate-200 bg-slate-50 px-3 py-1.5">
+      {onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-md px-2 py-1 text-sm font-medium text-slate-500 hover:bg-slate-200 transition-colors mr-2"
+          title="Close"
+        >
+          ✕
+        </button>
+      )}
       <ToolbarBtn label="B" title="Bold" active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()} />
       <ToolbarBtn label="I" title="Italic" active={editor.isActive("italic")} onClick={() => editor.chain().focus().toggleItalic().run()} />
       <ToolbarBtn label="U" title="Underline" active={editor.isActive("underline")} onClick={() => editor.chain().focus().toggleUnderline().run()} />
@@ -223,22 +233,37 @@ function Toolbar({ editor }: { editor: Editor | null }) {
 }
 
 export function InlineNoteEditor({
+  initial,
   initialHtml,
   onSave,
+  open = true,
+  onClose,
+  parentId,
   placeholder = "Write your notes here…",
   autosaveMs = 800,
 }: {
-  initialHtml: string;
-  onSave: (html: string) => void;
+  initial?: { title?: string; body_md?: string; tags?: string | null } | null;
+  initialHtml?: string;
+  onSave:
+    | ((note: { title: string; body_md: string; tags: string | null; parent_id?: number | null }) => void | Promise<void>)
+    | ((html: string) => void | Promise<void>);
+  open?: boolean;
+  onClose?: () => void;
+  parentId?: number | null;
   placeholder?: string;
   autosaveMs?: number;
 }) {
+  if (!open) return null;
+  const initialContent = initial?.body_md ?? initialHtml ?? "";
   const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
   const editorRef = useRef<Editor | null>(null);
   const dirtyRef = useRef(false);
   const timerRef = useRef<number | null>(null);
   const lastSavedRef = useRef(initialHtml);
-  const onSaveRef = useRef(onSave);
+  const onSaveRef = useRef<
+    | ((note: { title: string; body_md: string; tags: string | null; parent_id?: number | null }) => void | Promise<void>)
+    | ((html: string) => void | Promise<void>)
+  >(onSave);
   onSaveRef.current = onSave;
 
   const [slash, setSlash] = useState<SlashState>(null);
@@ -338,9 +363,18 @@ export function InlineNoteEditor({
     dirtyRef.current = false;
     lastSavedRef.current = html;
     setStatus("saving");
-    onSaveRef.current(html);
+    if (initial) {
+      (onSaveRef.current as (note: { title: string; body_md: string; tags: string | null; parent_id?: number | null }) => void | Promise<void>)({
+        title: initial?.title || "",
+        body_md: html,
+        tags: initial?.tags || null,
+        parent_id: parentId || null,
+      });
+    } else {
+      (onSaveRef.current as (html: string) => void | Promise<void>)(html);
+    }
     setStatus("saved");
-  }, []);
+  }, [initial?.title, initial?.tags, parentId, initial]);
 
   const scheduleSave = useCallback(() => {
     dirtyRef.current = true;
@@ -360,7 +394,7 @@ export function InlineNoteEditor({
       FileAttachment,
       Placeholder.configure({ placeholder }),
     ],
-    content: initialHtml,
+    content: initialContent,
     autofocus: false,
     editorProps: {
       attributes: {
@@ -453,7 +487,7 @@ export function InlineNoteEditor({
   return (
     <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
       <div className="flex items-center justify-between border-b border-slate-200 px-2">
-        <Toolbar editor={editor} />
+        <Toolbar editor={editor} onClose={onClose} />
         <span className={`shrink-0 pr-1 text-[10px] ${status === "saved" ? "text-slate-400" : "text-transparent"}`}>
           Saved
         </span>

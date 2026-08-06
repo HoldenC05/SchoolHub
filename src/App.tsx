@@ -23,6 +23,8 @@ import { ActivityPage } from "./pages/ActivityPage";
 import { CoursePage } from "./pages/CoursePage";
 import { IntegrationsPage } from "./pages/IntegrationsPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { ProjectPage } from "./pages/ProjectPage";
+import { MeetingPage } from "./pages/MeetingPage";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { RunningTimer } from "./components/RunningTimer";
 
@@ -129,8 +131,13 @@ else if (nav === "classes")
         selectedId={nav.id}
         onSelect={(id) => navigate({ kind: "note", id, returnTo: nav.returnTo })}
         onBack={() => navigate(nav.returnTo ?? "notes")}
+        returnTo={nav.returnTo}
       />
     );
+  else if (typeof nav === "object" && nav.kind === "project")
+    page = <ProjectPage projectId={nav.id} onBack={() => navigate({ kind: "course", id: nav.id })} />;
+  else if (typeof nav === "object" && nav.kind === "meeting")
+    page = <MeetingPage meetingId={nav.id} onBack={() => navigate({ kind: "activity", id: nav.id })} />;
   else page = <ActivityPage activityId={nav.id} onOpenNote={(id, returnTo) => navigate({ kind: "note", id, returnTo: returnTo ?? nav })} />;
 
   return (

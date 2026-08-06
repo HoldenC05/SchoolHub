@@ -3,6 +3,7 @@ import { useData, useCreate, useUpdate, useDelete } from "../lib/useData";
 import { api } from "../lib/api";
 import { toLocalInput } from "../lib/datetime";
 import type { Activity, Meeting, Note, Project, ProjectTask, Todo } from "../lib/types";
+import type { Nav } from "../lib/nav";
 import { InlineNoteEditor } from "../components/InlineNoteEditor";
 import { formatTags, mergeTags, parseTags } from "../lib/tags";
 import { TagPills } from "../components/Tags";
@@ -50,7 +51,7 @@ const ListIcon = () => (
   </svg>
 );
 
-export function ActivityPage({ activityId, onOpenNote }: { activityId: number; onOpenNote: (id: number, returnTo?: { kind: "activity"; id: number; sub?: SubTab }) => void }) {
+export function ActivityPage({ activityId, onOpenNote }: { activityId: number; onOpenNote: (id: number, returnTo?: Nav) => void }) {
   const { data: activity } = useData<Activity>(`/api/activities/${activityId}`);
   const { data: meetings, refresh: refreshMeetings } = useData<Meeting[]>("/api/meetings");
   const { data: projects, refresh: refreshProjects } = useData<Project[]>("/api/projects");
@@ -186,6 +187,7 @@ export function ActivityPage({ activityId, onOpenNote }: { activityId: number; o
           onAdd={() => setMeetingModal({ open: true, editing: null })}
           onEdit={(m) => setMeetingModal({ open: true, editing: m })}
           onChanged={refreshMeetings}
+          onOpenNote={(id) => onOpenNote(id, { kind: "meeting", id })}
         />
       )}
 
@@ -239,11 +241,13 @@ function MeetingList({
   onAdd,
   onEdit,
   onChanged,
+  onOpenNote,
 }: {
   meetings: Meeting[];
   onAdd: () => void;
   onEdit: (m: Meeting) => void;
   onChanged: () => void;
+  onOpenNote: (id: number, returnTo?: Nav) => void;
 }) {
   const { remove } = useDelete("/api/meetings");
   const { update } = useUpdate<Meeting>("/api/meetings");
@@ -265,11 +269,11 @@ function MeetingList({
       {meetings.length === 0 ? (
         <EmptyState icon="🤝" title="No meetings" hint="Add the first one" />
       ) : (
-        meetings.map((m) => {
-          const expanded = openNotes === m.id;
-          const notesHtml = drafts[m.id] ?? m.notes ?? "";
-          return (
-            <Card key={m.id} className="group">
+meetings.map((m) => {
+            const expanded = openNotes === m.id;
+            const notesHtml = drafts[m.id] ?? m.notes ?? "";
+            return (
+              <Card key={m.id} className="group cursor-pointer" onClick={() => onOpenNote(m.id)}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="font-medium text-slate-900">{m.title}</p>
@@ -312,7 +316,7 @@ function MeetingList({
                 <div className="mt-3 border-t border-slate-200 pt-3">
                   <InlineNoteEditor
                     initialHtml={notesHtml}
-                    onSave={(html) => void saveNotes(m, html)}
+                    onSave={(html: string) => void saveNotes(m, html)}
                   />
                 </div>
               )}
@@ -346,7 +350,7 @@ function ProjectList({
   onChanged: () => void;
   onTasksChanged: () => void;
   activityName: string;
-  onOpenNote: (id: number, returnTo?: { kind: "activity"; id: number; sub?: SubTab }) => void;
+  onOpenNote: (id: number, returnTo?: Nav) => void;
 }) {
   const { update } = useUpdate<Project>("/api/projects");
   const { remove } = useDelete("/api/projects");

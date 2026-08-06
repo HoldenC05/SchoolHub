@@ -227,6 +227,10 @@ const MIGRATIONS: &[&str] = &[
     INSERT INTO todos (entity_type, entity_id, title, status, priority, created_at, updated_at)
         SELECT 'project', project_id, title, CASE WHEN done THEN 'done' ELSE 'todo' END, 1, created_at, updated_at FROM project_tasks;",
     "ALTER TABLE todos ADD COLUMN position INTEGER NOT NULL DEFAULT 0;",
+    "ALTER TABLE todos ADD COLUMN activity_id INTEGER;",
+    "ALTER TABLE meetings ADD COLUMN location TEXT;",
+    "ALTER TABLE meetings ADD COLUMN attendees TEXT;",
+    "ALTER TABLE projects ADD COLUMN color TEXT;",
 ];
 
 pub fn init(path: &Path) -> rusqlite::Result<Db> {
@@ -294,16 +298,16 @@ pub const TABLES: &[(&str, &[&str])] = &[
     ),
     (
         "meetings",
-        &["activity_id", "course_id", "title", "starts_at", "ends_at", "agenda", "notes"],
+        &["activity_id", "course_id", "title", "starts_at", "ends_at", "agenda", "notes", "location", "attendees"],
     ),
     (
         "projects",
-        &["activity_id", "course_id", "title", "status", "deadline", "notes"],
+        &["activity_id", "course_id", "title", "status", "deadline", "notes", "color"],
     ),
     ("project_tasks", &["project_id", "title", "done"]),
     (
         "todos",
-        &["entity_type", "entity_id", "title", "status", "priority", "due_at", "notes", "position"],
+        &["entity_type", "entity_id", "title", "status", "priority", "due_at", "notes", "position", "activity_id"],
     ),
     (
         "time_entries",

@@ -1,9 +1,25 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
+export function Card({
+  children,
+  className = "",
+  onClick,
+  style,
+  ...props
+}: {
+  children: ReactNode;
+  className?: string;
+  onClick?: () => void;
+  style?: React.CSSProperties;
+}) {
   return (
-    <div className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${className}`}>
+    <div
+      className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${className}`}
+      onClick={onClick}
+      style={style}
+      {...props}
+    >
       {children}
     </div>
   );
@@ -45,12 +61,14 @@ export function Button({
 export function Field({
   label,
   children,
+  className = "",
 }: {
   label: string;
   children: ReactNode;
+  className?: string;
 }) {
   return (
-    <label className="flex flex-col gap-1 text-xs font-medium text-slate-500">
+    <label className={`flex flex-col gap-1 text-xs font-medium text-slate-500 ${className}`}>
       {label}
       {children}
     </label>
@@ -75,6 +93,28 @@ export function TextInput({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
+    />
+  );
+}
+
+export function Textarea({
+  value,
+  onChange,
+  placeholder,
+  rows = 4,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  rows?: number;
+}) {
+  return (
+    <textarea
+      className={inputStyles}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      rows={rows}
     />
   );
 }
@@ -135,7 +175,7 @@ export function IconButton({
   );
 }
 
-export function DeleteButton({ onConfirm }: { onConfirm: () => void }) {
+export function DeleteButton({ onConfirm, className = "" }: { onConfirm: () => void; className?: string }) {
   const [armed, setArmed] = useState(false);
   useEffect(() => {
     if (!armed) return;
@@ -153,7 +193,7 @@ export function DeleteButton({ onConfirm }: { onConfirm: () => void }) {
         }
       }}
       title="Delete"
-      className={`rounded-md p-1.5 transition-colors ${
+      className={`rounded-md p-1.5 transition-colors ${className} ${
         armed
           ? "bg-rose-500 text-white"
           : "text-slate-400 hover:bg-rose-50 hover:text-rose-500"
