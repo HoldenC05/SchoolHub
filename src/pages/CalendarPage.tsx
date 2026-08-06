@@ -438,6 +438,7 @@ function AssignmentModal({
   const [title, setTitle] = useState("");
   const [dueAt, setDueAt] = useState("");
   const [notes, setNotes] = useState("");
+  const [grade, setGrade] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -447,6 +448,7 @@ function AssignmentModal({
     const d = parseDate(state?.due_at ?? null);
     setDueAt(d ? toLocalInput(d) : "");
     setNotes(state?.notes ?? "");
+    setGrade(state?.grade ?? "");
     setError(null);
     setBusy(false);
   }, [open, state]);
@@ -461,6 +463,7 @@ function AssignmentModal({
         title: title.trim(),
         due_at: dueAt || null,
         notes: notes.trim() || null,
+        grade: grade.trim() || null,
       });
       onDone();
       onClose();
@@ -488,6 +491,9 @@ function AssignmentModal({
         </Field>
         <Field label="Notes">
           <textarea className={inputStyles + " min-h-20 resize-y"} value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </Field>
+        <Field label="Grade">
+          <TextInput value={grade} onChange={setGrade} placeholder="e.g. 92, A-, 17/20" />
         </Field>
         {error && <p className="text-xs text-rose-600">{error}</p>}
         <div className="flex justify-end gap-2 pt-1">

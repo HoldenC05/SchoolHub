@@ -29,11 +29,26 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { RunningTimer } from "./components/RunningTimer";
 import { UndoToast } from "./components/UndoToast";
 import { VerseToast } from "./components/BibleVerse";
+import { SearchPalette } from "./components/SearchPalette";
+import { QuickAdd } from "./components/QuickAdd";
+import { NotificationScheduler } from "./components/NotificationScheduler";
 
 function App() {
   const [nav, setNav] = useState<Nav>("today");
   const [pairingState, setPairingState] = useState<"checking" | "paired" | "unpaired">("checking");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const checkPairing = useCallback(async () => {
     const pair = window.location.hash.match(/[#&]pair=([^&]+)/);
@@ -155,6 +170,7 @@ function App() {
             onNavigate={navigate}
             activities={activities.data}
             onAddActivity={() => navigate("activities")}
+            onOpenSearch={() => setSearchOpen(true)}
             appName={appName}
           />
         </div>
@@ -177,6 +193,16 @@ function App() {
               </svg>
             </button>
             <span className="font-semibold text-slate-900">{appName}</span>
+            <button
+              onClick={() => setSearchOpen(true)}
+              className="ml-auto rounded-md p-1 text-slate-400 hover:bg-slate-100"
+              aria-label="Search"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.5" />
+                <path d="m16.5 16.5 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
           </div>
           <main className="flex-1 overflow-y-auto p-5 pb-12 md:p-8">{page}</main>
         </div>
@@ -184,6 +210,13 @@ function App() {
         <RunningTimer onOpen={() => navigate("tracker")} />
         <UndoToast />
         <VerseToast />
+        <QuickAdd />
+        <NotificationScheduler />
+        <SearchPalette
+          open={searchOpen}
+          onClose={() => setSearchOpen(false)}
+          onNavigate={navigate}
+        />
       </div>
     </ErrorBoundary>
   );

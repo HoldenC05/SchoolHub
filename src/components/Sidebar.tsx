@@ -17,19 +17,33 @@ export function Sidebar({
   onNavigate,
   activities,
   onAddActivity,
+  onOpenSearch,
   appName,
 }: {
   nav: Nav;
   onNavigate: (nav: Nav) => void;
   activities: Activity[] | null;
   onAddActivity: () => void;
+  onOpenSearch: () => void;
   appName: string;
 }) {
   return (
     <div className="flex h-full w-64 flex-col border-r border-slate-200 bg-white">
-      <div className="px-5 py-5">
-        <h1 className="text-lg font-bold tracking-tight text-slate-900">{appName}</h1>
-        <p className="text-xs text-slate-500">Everything in one place</p>
+      <div className="flex items-start justify-between px-5 py-5">
+        <div>
+          <h1 className="text-lg font-bold tracking-tight text-slate-900">{appName}</h1>
+          <p className="text-xs text-slate-500">Everything in one place</p>
+        </div>
+        <button
+          onClick={onOpenSearch}
+          className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          title="Search (⌘K)"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.5" />
+            <path d="m16.5 16.5 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        </button>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 pb-4">

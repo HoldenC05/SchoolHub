@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import QRCode from "qrcode";
-import { isTauri } from "../lib/api";
-import { Button, Card, Field, TextInput } from "../components/ui";
+import { api, isTauri } from "../lib/api";
+import { refreshAll, useData } from "../lib/useData";
+import type { Course } from "../lib/types";
+import { Button, Card, Field, SelectInput, TextInput } from "../components/ui";
 
 interface TailscaleInfo {
   ip: string;
@@ -391,6 +393,220 @@ function CalendarSection() {
   );
 }
 
+interface BbGrade {
+  title: string;
+  score: string;
+  possible: string;
+  status: string;
+  date: string;
+}
+
+interface BbCourse {
+  id: string;
+  name: string;
+  external_id: string;
+}
+
+function BlackboardSection() {
+  const [origin, setOrigin] = useState("https://harvey.utulsa.edu");
+  const [cookie, setCookie] = useState(() => localStorage.getItem("bb-cookie") ?? "");
+  const [courses, setCourses] = useState<BbCourse[] | null>(null);
+  const [selBb, setSelBb] = useState("");
+  const [grades, setGrades] = useState<BbGrade[] | null>(null);
+  const [mapTo, setMapTo] = useState("");
+  const [checked, setChecked] = useState<Set<number>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const { data: plannerCourses } = useData<Course[]>("/api/courses");
+
+  const saveCookie = (v: string) => {
+    setCookie(v);
+    localStorage.setItem("bb-cookie", v);
+  };
+
+  const loadCourses = async () => {
+    setBusy(true);
+    setErr(null);
+    setDone(null);
+    try {
+      const res = await invoke<{ courses: BbCourse[] }>("bb_my_courses", { origin, cookie });
+      setCourses(res.courses);
+      setSelBb(res.courses[0]?.id ?? "");
+      setGrades(null);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const loadGrades = async () => {
+    if (!selBb) return;
+    setBusy(true);
+    setErr(null);
+    setDone(null);
+    try {
+      const res = await invoke<{ grades: BbGrade[] }>("bb_my_grades", {
+        origin,
+        courseId: selBb,
+        cookie,
+      });
+      setGrades(res.grades);
+      setChecked(new Set(res.grades.map((_, i) => i)));
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const importGrades = async () => {
+    if (!grades || !mapTo) return;
+    setBusy(true);
+    setErr(null);
+    setDone(null);
+    try {
+      let n = 0;
+      for (const [i, g] of grades.entries()) {
+        if (!checked.has(i)) continue;
+        let gradeText = g.score || "";
+        if (g.possible) gradeText = `${g.score}/${g.possible}`;
+        const graded = g.status.toLowerCase().includes("grad");
+        await api.create("/api/assignments", {
+          title: g.title,
+          kind: "homework",
+          course_id: Number(mapTo),
+          grade: gradeText || null,
+          status: graded ? "graded" : "todo",
+        });
+        n++;
+      }
+      refreshAll();
+      setDone(`Imported ${n} grade${n === 1 ? "" : "s"} into your class.`);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!isTauri()) {
+    return (
+      <Card className="flex items-start gap-3">
+        <span className="text-2xl">🎓</span>
+        <div className="min-w-0 flex-1">
+          <p className="font-medium text-slate-900">Blackboard</p>
+          <p className="text-sm text-slate-500">
+            Sync grades from your Mac. Open the desktop app's Integrations page to connect.
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="flex items-start gap-3">
+      <span className="text-2xl">🎓</span>
+      <div className="min-w-0 flex-1 space-y-3">
+        <div>
+          <p className="font-medium text-slate-900">Blackboard (Harvey)</p>
+          <p className="text-sm text-slate-500">
+            Your school uses SSO + MFA, so instead of storing your password, sign in normally in
+            your browser and paste your session cookie here. When it expires, just paste a fresh
+            one.
+          </p>
+        </div>
+
+        <Field label="Blackboard URL">
+          <TextInput value={origin} onChange={setOrigin} placeholder="https://your.school.edu" />
+        </Field>
+        <Field label="Session cookie">
+          <textarea
+            className={"w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 placeholder-slate-400 outline-none focus:border-indigo-500 resize-y"}
+            rows={3}
+            value={cookie}
+            onChange={(e) => saveCookie(e.target.value)}
+            placeholder="e.g. JSESSIONID=ABC123; ... (paste the whole Cookie header)"
+          />
+          <p className="mt-1 text-xs text-slate-400">
+            How to get it: log in to Blackboard in Safari/Chrome, open Developer Tools → Network,
+            click any request, and copy the full "Cookie" request header.
+          </p>
+        </Field>
+
+        {err && <p className="text-xs text-rose-600">{err}</p>}
+        {done && <p className="text-xs text-emerald-600">{done}</p>}
+
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => void loadCourses()} disabled={busy || !origin || !cookie}>
+            {busy ? "Loading…" : "Load my courses"}
+          </Button>
+        </div>
+
+        {courses && courses.length > 0 && (
+          <div className="space-y-3 border-t border-slate-100 pt-3">
+            <Field label="Blackboard course">
+              <SelectInput
+                value={selBb}
+                onChange={setSelBb}
+                options={courses.map((c) => ({ value: c.id, label: c.name }))}
+              />
+            </Field>
+            <Button onClick={() => void loadGrades()} disabled={busy || !selBb}>
+              Load grades
+            </Button>
+          </div>
+        )}
+
+        {grades && grades.length > 0 && (
+          <div className="space-y-3 border-t border-slate-100 pt-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              {grades.length} graded items — pick what to import
+            </p>
+            <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+              {grades.map((g, i) => (
+                <label key={i} className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-indigo-500"
+                    checked={checked.has(i)}
+                    onChange={() =>
+                      setChecked((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(i)) next.delete(i);
+                        else next.add(i);
+                        return next;
+                      })
+                    }
+                  />
+                  <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{g.title}</span>
+                  <span className="shrink-0 text-sm font-medium text-slate-500">
+                    {g.possible ? `${g.score}/${g.possible}` : g.score}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <Field label="Import into this class">
+              <SelectInput
+                value={mapTo}
+                onChange={setMapTo}
+                options={[
+                  { value: "", label: "Choose a class…" },
+                  ...(plannerCourses || []).map((c) => ({ value: String(c.id), label: c.name })),
+                ]}
+              />
+            </Field>
+            <Button onClick={() => void importGrades()} disabled={busy || checked.size === 0 || !mapTo}>
+              Import {checked.size} to Homework & Tests
+            </Button>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 export function IntegrationsPage() {
   const [token, setToken] = useState<string | null>(null);
   const [tail, setTail] = useState<TailscaleInfo | null>(null);
@@ -426,12 +642,6 @@ export function IntegrationsPage() {
       icon: "📧",
       name: "Outlook / Microsoft",
       desc: "Two-way calendar sync through the Microsoft Graph API.",
-      status: "Planned",
-    },
-    {
-      icon: "🎓",
-      name: "Blackboard",
-      desc: "Best-effort auto-sync of assignments and grades. May break if Blackboard changes.",
       status: "Planned",
     },
   ];
@@ -511,6 +721,7 @@ export function IntegrationsPage() {
         </h2>
         <div className="space-y-2">
           <CalendarSection />
+          <BlackboardSection />
           {integrations.map((i) => (
             <Card key={i.name} className="flex items-start gap-3">
               <span className="text-2xl">{i.icon}</span>

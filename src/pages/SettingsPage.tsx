@@ -12,7 +12,7 @@ import {
   saveBytes,
   saveText,
 } from "../lib/export";
-import { Button, Card, Field, TextInput } from "../components/ui";
+import { Button, Card, Field, SelectInput, TextInput } from "../components/ui";
 
 interface CalSel {
   href: string;
@@ -52,11 +52,15 @@ export function SettingsPage() {
   const [dataDir, setDataDir] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [notifEnabled, setNotifEnabled] = useState(false);
+  const [notifLead, setNotifLead] = useState(60);
 
   useEffect(() => {
     if (!settings) return;
     setAppName(settings.app_name || "School Hub");
     setAccent(settings.accent || "indigo");
+    setNotifEnabled(settings.notifications_enabled === 1);
+    setNotifLead(settings.notify_before_minutes ?? 60);
     try {
       setHidden(new Set(JSON.parse(settings.today_hidden_calendars || "[]")));
     } catch {
@@ -96,6 +100,16 @@ export function SettingsPage() {
       else next.add(href);
       return next;
     });
+  };
+
+  const saveNotifications = async () => {
+    setSaved("saving");
+    const ok = await update(1, {
+      notifications_enabled: notifEnabled ? 1 : 0,
+      notify_before_minutes: notifLead,
+    });
+    setSaved(ok ? "saved" : "error");
+    refresh();
   };
 
   const pickAccent = (name: string) => {
@@ -253,6 +267,45 @@ export function SettingsPage() {
             </span>
           </div>
         )}
+      </Card>
+
+      <Card className="space-y-3">
+        <div>
+          <h2 className="font-semibold text-slate-900">Notifications</h2>
+          <p className="text-sm text-slate-500">
+            Get pinged when homework, tests, and meetings are coming up. Works while School Hub is
+            open on your Mac or phone.
+          </p>
+        </div>
+        <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 px-3 py-2">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-indigo-500"
+            checked={notifEnabled}
+            onChange={(e) => setNotifEnabled(e.target.checked)}
+          />
+          <span className="flex-1 text-sm text-slate-900">Enable reminders</span>
+        </label>
+        <Field label="Remind me">
+          <SelectInput
+            value={String(notifLead)}
+            onChange={(v) => setNotifLead(Number(v))}
+            options={[
+              { value: "15", label: "15 minutes before" },
+              { value: "30", label: "30 minutes before" },
+              { value: "60", label: "1 hour before" },
+              { value: "120", label: "2 hours before" },
+              { value: "1440", label: "1 day before" },
+            ]}
+          />
+        </Field>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => void saveNotifications()} disabled={saved === "saving"}>
+            Save notifications
+          </Button>
+          {saved === "saved" && <span className="text-xs text-emerald-600">Saved ✓</span>}
+          {saved === "error" && <span className="text-xs text-rose-600">Couldn't save.</span>}
+        </div>
       </Card>
 
       <Card className="space-y-4">

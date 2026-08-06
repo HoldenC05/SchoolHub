@@ -170,6 +170,8 @@ export interface AppSettings {
   app_name: string;
   accent: string;
   today_hidden_calendars: string;
+  notifications_enabled: number;
+  notify_before_minutes: number;
   created_at: string;
   updated_at: string;
 }

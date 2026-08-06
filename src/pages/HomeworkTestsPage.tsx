@@ -3,6 +3,7 @@ import { useData, useCreate, useUpdate, useDelete } from "../lib/useData";
 import { toLocalInput } from "../lib/datetime";
 import type { Assignment, AssignmentKind, AssignmentStatus, Course } from "../lib/types";
 import { KIND_LABELS, STATUS_LABELS } from "../lib/types";
+import { summarizeGrades } from "../lib/grades";
 import { TodoList } from "../components/TodoList";
 import {
   Button,
@@ -51,6 +52,7 @@ function AssignmentModal({
   const [courseId, setCourseId] = useState(initial?.course_id ? String(initial.course_id) : "");
   const [dueAt, setDueAt] = useState(toLocalInput(initial?.due_at));
   const [status, setStatus] = useState<AssignmentStatus>(initial?.status ?? "todo");
+  const [grade, setGrade] = useState(initial?.grade ?? "");
   const error = createError || updateError;
 
   const save = async () => {
@@ -61,6 +63,7 @@ function AssignmentModal({
       status,
       course_id: courseId ? Number(courseId) : null,
       due_at: dueAt || null,
+      grade: grade.trim() || null,
     };
     if (initial) {
       const ok = await update(initial.id, body);
@@ -118,6 +121,9 @@ function AssignmentModal({
         <Field label="Due date">
           <input type="datetime-local" className={inputStyles} value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
         </Field>
+        <Field label="Grade">
+          <TextInput value={grade} onChange={setGrade} placeholder="e.g. 92, A-, 17/20" />
+        </Field>
         {error && <p className="text-xs text-rose-600">{error.message}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
@@ -166,6 +172,33 @@ export function HomeworkTestsPage() {
         <Button onClick={() => setModalOpen(true)}>+ Add</Button>
       </header>
 
+      {(() => {
+        const grades = summarizeGrades((assignments || []).map((a) => a.grade));
+        if (grades.count === 0) return null;
+        return (
+          <Card className="border-emerald-500/30 bg-emerald-500/5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
+                  Overall GPA
+                </p>
+                <p className="mt-1 text-3xl font-bold text-slate-900">
+                  {grades.averagePoints?.toFixed(2)}
+                  <span className="ml-2 text-lg font-semibold text-slate-500">
+                    {grades.letter} · {grades.count} graded
+                  </span>
+                </p>
+                {grades.averagePercent !== null && (
+                  <p className="text-sm text-slate-500">
+                    {grades.averagePercent}% average
+                  </p>
+                )}
+              </div>
+            </div>
+          </Card>
+        );
+      })()}
+
       <div className="flex gap-2">
         {(["all", "homework", "test", "project"] as const).map((k) => (
           <button
@@ -213,6 +246,9 @@ export function HomeworkTestsPage() {
                   </span>
                 </button>
                 <div className="flex shrink-0 items-center gap-1.5">
+                  {a.grade && (
+                    <Pill className="bg-emerald-50 text-emerald-600">{a.grade}</Pill>
+                  )}
                   <Pill
                     className={
                       a.kind === "test"

@@ -240,6 +240,8 @@ const MIGRATIONS: &[&str] = &[
         deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_trash_deleted_at ON trash (deleted_at);",
+    "ALTER TABLE settings ADD COLUMN notifications_enabled INTEGER NOT NULL DEFAULT 0;",
+    "ALTER TABLE settings ADD COLUMN notify_before_minutes INTEGER NOT NULL DEFAULT 60;",
 ];
 
 pub fn init(path: &Path) -> rusqlite::Result<Db> {

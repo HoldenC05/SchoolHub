@@ -1,3 +1,4 @@
+mod blackboard;
 mod caldav;
 mod db;
 mod server;
@@ -517,11 +518,34 @@ fn app_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .map_err(|e| format!("failed to resolve app data dir: {e}"))
 }
 
+#[tauri::command]
+async fn bb_my_courses(origin: String, cookie: String) -> Result<serde_json::Value, String> {
+    let res = tauri::async_runtime::spawn_blocking(move || blackboard::my_courses(&origin, &cookie))
+        .await
+        .map_err(|e| e.to_string())??;
+    Ok(json!({ "courses": res }))
+}
+
+#[tauri::command]
+async fn bb_my_grades(
+    origin: String,
+    course_id: String,
+    cookie: String,
+) -> Result<serde_json::Value, String> {
+    let res = tauri::async_runtime::spawn_blocking(move || {
+        blackboard::my_grades(&origin, &course_id, &cookie)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    Ok(json!({ "grades": res }))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
             get_pairing_token,
             api_base,
@@ -538,7 +562,9 @@ pub fn run() {
             cal_disconnect,
             cal_event_create,
             cal_event_update,
-            cal_event_delete
+            cal_event_delete,
+            bb_my_courses,
+            bb_my_grades
         ])
         .setup(|app| {
             let dir = app_data_dir(&app.handle())?;

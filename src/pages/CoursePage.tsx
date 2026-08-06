@@ -20,6 +20,7 @@ import type {
 } from "../lib/types";
 import { KIND_LABELS, STATUS_LABELS } from "../lib/types";
 import type { Nav } from "../lib/nav";
+import { summarizeGrades } from "../lib/grades";
 import {
   Button,
   Card,
@@ -138,6 +139,8 @@ export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenN
   );
   const nextUp = upcoming.sort((a, b) => (a.due_at || "").localeCompare(b.due_at || ""))[0];
 
+  const courseGrades = summarizeGrades(myAssignments.map((a) => a.grade));
+
   const tabs: { key: SubTab; label: string }[] = [
     { key: "overview", label: "Overview" },
     { key: "assignments", label: `Assignments (${myAssignments.length})` },
@@ -211,6 +214,33 @@ export function CoursePage({ courseId, onOpenNote }: { courseId: number; onOpenN
               >
                 {course.blackboard_url}
               </a>
+            </Card>
+          )}
+          {courseGrades.count > 0 && (
+            <Card className="border-emerald-500/30 bg-emerald-500/5">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
+                    Current grade
+                  </p>
+                  <p className="mt-1 text-3xl font-bold text-slate-900">
+                    {courseGrades.letter}
+                    <span className="ml-2 text-lg font-semibold text-slate-500">
+                      {courseGrades.averagePoints?.toFixed(2)} GPA
+                    </span>
+                  </p>
+                  {courseGrades.averagePercent !== null ? (
+                    <p className="text-sm text-slate-500">
+                      {courseGrades.averagePercent}% average across {courseGrades.count} graded item
+                      {courseGrades.count === 1 ? "" : "s"}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-slate-500">
+                      {courseGrades.count} graded item{courseGrades.count === 1 ? "" : "s"}
+                    </p>
+                  )}
+                </div>
+              </div>
             </Card>
           )}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -582,6 +612,9 @@ function AssignmentList({
                 </span>
               </button>
               <div className="flex shrink-0 items-center gap-1.5">
+                {a.grade && (
+                  <Pill className="bg-emerald-50 text-emerald-600">{a.grade}</Pill>
+                )}
                 <Pill className={KIND_COLOR[a.kind]}>{KIND_LABELS[a.kind]}</Pill>
                 <button onClick={() => cycleStatus(a)} title="Change status" className={`rounded-full px-2 py-0.5 text-xs font-medium transition-colors ${statusColor(a.status)}`}>
                   {STATUS_LABELS[a.status]}
@@ -1132,6 +1165,7 @@ function CourseAssignmentModal({
   const [kind, setKind] = useState<AssignmentKind>(initial?.kind ?? "homework");
   const [dueAt, setDueAt] = useState(toLocalInput(initial?.due_at));
   const [status, setStatus] = useState<AssignmentStatus>(initial?.status ?? "todo");
+  const [grade, setGrade] = useState(initial?.grade ?? "");
   const error = createError || updateError;
 
   const save = async () => {
@@ -1142,6 +1176,7 @@ function CourseAssignmentModal({
       status,
       course_id: courseId,
       due_at: dueAt || null,
+      grade: grade.trim() || null,
     };
     if (initial) {
       const ok = await update(initial.id, body);
@@ -1188,6 +1223,9 @@ function CourseAssignmentModal({
         </div>
         <Field label="Due date">
           <input type="datetime-local" className={inputStyles} value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
+        </Field>
+        <Field label="Grade">
+          <TextInput value={grade} onChange={setGrade} placeholder="e.g. 92, A-, 17/20" />
         </Field>
         {error && <p className="text-xs text-rose-600">{error.message}</p>}
         <div className="flex justify-end gap-2 pt-1">
