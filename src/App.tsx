@@ -28,7 +28,7 @@ import { MeetingPage } from "./pages/MeetingPage";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { RunningTimer } from "./components/RunningTimer";
 import { UndoToast } from "./components/UndoToast";
-import { VerseToast } from "./components/BibleVerse";
+import { VerseFooter } from "./components/BibleVerse";
 import { SearchPalette } from "./components/SearchPalette";
 import { QuickAdd } from "./components/QuickAdd";
 import { NotificationScheduler } from "./components/NotificationScheduler";
@@ -205,11 +205,11 @@ function App() {
             </button>
           </div>
           <main className="flex-1 overflow-y-auto p-5 pb-12 md:p-8">{page}</main>
+          <VerseFooter />
         </div>
 
         <RunningTimer onOpen={() => navigate("tracker")} />
         <UndoToast />
-        <VerseToast />
         <QuickAdd />
         <NotificationScheduler />
         <SearchPalette

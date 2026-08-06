@@ -1,6 +1,6 @@
-mod blackboard;
 mod caldav;
 mod db;
+mod graph;
 mod server;
 mod settings;
 mod sync;
@@ -519,25 +519,105 @@ fn app_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
-async fn bb_my_courses(origin: String, cookie: String) -> Result<serde_json::Value, String> {
-    let res = tauri::async_runtime::spawn_blocking(move || blackboard::my_courses(&origin, &cookie))
-        .await
-        .map_err(|e| e.to_string())??;
-    Ok(json!({ "courses": res }))
+fn ol_status(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let dir = app_data_dir(&app)?;
+    let cfg = graph::load_config(&dir);
+    Ok(json!({
+        "client_id": cfg.client_id,
+        "email": cfg.email,
+        "name": cfg.name,
+        "connected": cfg.is_connected(),
+        "last_sync_at": cfg.last_sync_at,
+        "last_sync_error": cfg.last_sync_error,
+    }))
 }
 
 #[tauri::command]
-async fn bb_my_grades(
-    origin: String,
-    course_id: String,
-    cookie: String,
+fn ol_device_code(
+    app: tauri::AppHandle,
+    client_id: String,
+    tz: String,
 ) -> Result<serde_json::Value, String> {
+    let dir = app_data_dir(&app)?;
+    let mut cfg = graph::load_config(&dir);
+    cfg.client_id = client_id.trim().to_string();
+    cfg.tz = tz;
+    graph::save_config(&dir, &cfg)?;
+    let info = graph::device_code(&cfg.client_id)?;
+    Ok(json!({
+        "device_code": info.device_code,
+        "user_code": info.user_code,
+        "verification_uri": info.verification_uri,
+        "message": info.message,
+    }))
+}
+
+#[tauri::command]
+fn ol_poll(app: tauri::AppHandle, device_code: String) -> Result<serde_json::Value, String> {
+    let dir = app_data_dir(&app)?;
+    let cfg = graph::load_config(&dir);
+    if cfg.client_id.is_empty() {
+        return Err("Client ID not set.".into());
+    }
+    match graph::poll_token(&cfg.client_id, &device_code, &dir)? {
+        graph::PollStatus::Pending => Ok(json!({ "state": "pending" })),
+        graph::PollStatus::Error(msg) => Ok(json!({ "state": "error", "message": msg })),
+        graph::PollStatus::Success { email, name } => {
+            let mut cfg = graph::load_config(&dir);
+            cfg.email = email.clone();
+            cfg.name = name.clone();
+            cfg.enabled = true;
+            graph::save_config(&dir, &cfg)?;
+            Ok(json!({ "state": "success", "email": email, "name": name }))
+        }
+    }
+}
+
+#[tauri::command]
+async fn ol_sync_now(app: tauri::AppHandle, state: tauri::State<'_, db::Db>) -> Result<serde_json::Value, String> {
+    let dir = app_data_dir(&app)?;
+    let db = state.inner().clone();
+    let dir2 = dir.clone();
     let res = tauri::async_runtime::spawn_blocking(move || {
-        blackboard::my_grades(&origin, &course_id, &cookie)
+        let report = graph::run_outlook_sync(&dir2, &db);
+        let mut cfg = graph::load_config(&dir2);
+        if report.error.is_none() {
+            cfg.last_sync_at = Some(caldav::now_iso_utc());
+        }
+        cfg.last_sync_error = report.error.clone();
+        let _ = graph::save_config(&dir2, &cfg);
+        (report.pushed, report.pulled, report.events_removed, report.error, cfg.last_sync_at)
     })
     .await
-    .map_err(|e| e.to_string())??;
-    Ok(json!({ "grades": res }))
+    .map_err(|e| e.to_string())?;
+    let (pushed, pulled, events_removed, error, last_sync_at) = res;
+    Ok(json!({
+        "pushed": pushed,
+        "pulled": pulled,
+        "events_removed": events_removed,
+        "error": error,
+        "last_sync_at": last_sync_at,
+    }))
+}
+
+#[tauri::command]
+fn ol_disconnect(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let dir = app_data_dir(&app)?;
+    graph::clear_token(&dir);
+    let cfg = graph::OutlookConfig {
+        client_id: graph::load_config(&dir).client_id,
+        ..graph::OutlookConfig::default()
+    };
+    graph::save_config(&dir, &cfg)?;
+    let conn = app.state::<db::Db>();
+    if let Ok(conn) = conn.lock() {
+        let _ = conn.execute(
+            "DELETE FROM calendar_events WHERE source = 'graph'",
+            [],
+        );
+        let _ = conn.execute("DELETE FROM calendar_links WHERE calendar_href = 'graph://primary'", []);
+    }
+    Ok(json!({ "connected": false }))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -563,8 +643,11 @@ pub fn run() {
             cal_event_create,
             cal_event_update,
             cal_event_delete,
-            bb_my_courses,
-            bb_my_grades
+            ol_status,
+            ol_device_code,
+            ol_poll,
+            ol_sync_now,
+            ol_disconnect
         ])
         .setup(|app| {
             let dir = app_data_dir(&app.handle())?;

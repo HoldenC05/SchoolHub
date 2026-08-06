@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useData, useUpdate } from "../lib/useData";
+import { refreshAll, useData, useUpdate } from "../lib/useData";
 import { api, isTauri } from "../lib/api";
-import type { AppSettings, CourseFile, Note } from "../lib/types";
+import type { AppSettings, Course, CourseFile, Note } from "../lib/types";
 import { ACCENT_PRESETS, applyAccent } from "../lib/theme";
 import {
   allNotesHtml,
@@ -35,6 +35,203 @@ function slug(s: string): string {
 function fileExt(name: string | null): string {
   const m = /\.([A-Za-z0-9]+)$/.exec(name || "");
   return m ? `.${m[1].toLowerCase()}` : "";
+}
+
+const IMPORT_HEADERS = ["title", "course", "due", "due_at", "due date", "grade", "status", "kind", "notes"];
+
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let cur: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else inQuotes = false;
+      } else field += c;
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ",") {
+      cur.push(field);
+      field = "";
+    } else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      cur.push(field);
+      field = "";
+      if (cur.some((f) => f.trim() !== "")) rows.push(cur);
+      cur = [];
+    } else field += c;
+  }
+  if (field !== "" || cur.length) {
+    cur.push(field);
+    if (cur.some((f) => f.trim() !== "")) rows.push(cur);
+  }
+  return rows;
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function parseImportDate(s: string): string | null {
+  const raw = s.trim();
+  if (!raw) return null;
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ](\d{1,2}):(\d{1,2}))?/.exec(raw);
+  if (m) {
+    const [, y, mo, d, h = "0", mi = "0"] = m;
+    return `${y}-${pad2(Number(mo))}-${pad2(Number(d))}T${pad2(Number(h))}:${pad2(Number(mi))}`;
+  }
+  m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ ]?(\d{1,2}):(\d{1,2}))?/.exec(raw);
+  if (m) {
+    const [, mo, d, y, h = "0", mi = "0"] = m;
+    return `${y}-${pad2(Number(mo))}-${pad2(Number(d))}T${pad2(Number(h))}:${pad2(Number(mi))}`;
+  }
+  return null;
+}
+
+function normalizeKind(s: string): string {
+  const k = s.trim().toLowerCase();
+  if (k === "test" || k === "quiz" || k === "exam") return "test";
+  if (k === "project") return "project";
+  return "homework";
+}
+
+function normalizeStatus(s: string): string {
+  const v = s.trim().toLowerCase().replace(/[\s_-]+/g, "");
+  if (v === "graded" || v === "grade" || v === "done" || v === "complete" || v === "completed") {
+    return v.startsWith("grad") ? "graded" : "done";
+  }
+  if (v === "inprogress" || v === "working") return "in_progress";
+  return "todo";
+}
+
+interface ImportResult {
+  imported: number;
+  noClass: number;
+  skipped: string[];
+}
+
+function ImportSection() {
+  const [csv, setCsv] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<ImportResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const { data: courses } = useData<Course[]>("/api/courses");
+
+  const doImport = async () => {
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      const rows = parseCsv(csv);
+      if (rows.length === 0) throw new Error("Paste some CSV first.");
+      const headers = rows[0].map((h) => h.trim().toLowerCase());
+      const hasHeader = headers.some((h) => IMPORT_HEADERS.includes(h));
+      const data = hasHeader ? rows.slice(1) : rows;
+      if (hasHeader && data.length === 0) throw new Error("No rows found under the header.");
+
+      const courseMap = new Map<string, number>();
+      for (const c of courses || []) courseMap.set(c.name.trim().toLowerCase(), c.id);
+
+      let imported = 0;
+      let noClass = 0;
+      const skipped: string[] = [];
+
+      for (const row of data) {
+        let title = "";
+        let courseName = "";
+        let due = "";
+        let grade = "";
+        let status = "";
+        let kind = "";
+        let notes = "";
+
+        if (hasHeader) {
+          const idx = Object.fromEntries(headers.map((h, i) => [h, i]));
+          title = row[idx.title] ?? "";
+          courseName = row[idx.course] ?? "";
+          due = row[idx.due] ?? row[idx.due_at] ?? row[idx["due date"]] ?? "";
+          grade = row[idx.grade] ?? "";
+          status = row[idx.status] ?? "";
+          kind = row[idx.kind] ?? "";
+          notes = row[idx.notes] ?? "";
+        } else {
+          title = row[0] ?? "";
+          courseName = row[1] ?? "";
+          due = row[2] ?? "";
+          grade = row[3] ?? "";
+          status = row[4] ?? "";
+          kind = row[5] ?? "";
+        }
+        title = String(title).trim();
+        if (!title) continue;
+
+        const dueAt = parseImportDate(String(due));
+        const courseId = courseName
+          ? courseMap.get(String(courseName).trim().toLowerCase())
+          : undefined;
+
+        await api.create("/api/assignments", {
+          title,
+          kind: normalizeKind(String(kind)),
+          status: normalizeStatus(String(status)),
+          due_at: dueAt,
+          grade: grade ? String(grade).trim() : null,
+          course_id: courseId ?? null,
+          notes: notes ? String(notes).trim() || null : null,
+        });
+        imported++;
+        if (courseName && courseId === undefined) noClass++;
+      }
+
+      refreshAll();
+      setResult({ imported, noClass, skipped });
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card className="space-y-3">
+      <div>
+        <h2 className="font-semibold text-slate-900">Import assignments</h2>
+        <p className="text-sm text-slate-500">
+          Paste a CSV (comma-separated, one assignment per row) to bulk-add assignments with grades.
+        </p>
+      </div>
+      <Field label="CSV (header: title, course, due, grade, status, kind)">
+        <textarea
+          className="h-40 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 placeholder-slate-400 outline-none focus:border-indigo-500 resize-y"
+          value={csv}
+          onChange={(e) => setCsv(e.target.value)}
+          placeholder={"title,course,due,grade,status,kind\nEssay 1,AP Biology,2026-09-01,92,graded,homework\nQuiz 3,AP Biology,08/15/2026,17/20,todo,test"}
+        />
+      </Field>
+      <p className="text-xs text-slate-400">
+        "course" matches a class you've already created (by name). Dates work as{" "}
+        <code className="text-slate-500">2026-09-01</code>, <code className="text-slate-500">2026-09-01 14:30</code>,
+        or <code className="text-slate-500">09/01/2026</code>. Status: todo / in_progress / done / graded.
+      </p>
+      {error && <p className="text-xs text-rose-600">{error}</p>}
+      {result && (
+        <p className="text-xs text-emerald-600">
+          Imported {result.imported} assignment{result.imported === 1 ? "" : "s"}
+          {result.noClass > 0 ? ` (${result.noClass} without a matching class)` : ""}.
+        </p>
+      )}
+      <div className="flex items-center gap-2">
+        <Button onClick={() => void doImport()} disabled={busy || !csv.trim()}>
+          {busy ? "Importing…" : "Import assignments"}
+        </Button>
+      </div>
+    </Card>
+  );
 }
 
 export function SettingsPage() {
@@ -392,6 +589,8 @@ export function SettingsPage() {
 
         {msg && <p className="text-xs text-slate-600">{msg}</p>}
       </Card>
+
+      <ImportSection />
 
       <Card className="space-y-2">
         <h2 className="font-semibold text-slate-900">Where your data lives</h2>

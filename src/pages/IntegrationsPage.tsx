@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import QRCode from "qrcode";
-import { api, isTauri } from "../lib/api";
-import { refreshAll, useData } from "../lib/useData";
-import type { Course } from "../lib/types";
-import { Button, Card, Field, SelectInput, TextInput } from "../components/ui";
+import { isTauri } from "../lib/api";
+import { Button, Card, Field, TextInput } from "../components/ui";
 
 interface TailscaleInfo {
   ip: string;
@@ -393,47 +391,63 @@ function CalendarSection() {
   );
 }
 
-interface BbGrade {
-  title: string;
-  score: string;
-  possible: string;
-  status: string;
-  date: string;
-}
-
-interface BbCourse {
-  id: string;
+interface OlStatus {
+  client_id: string;
+  email: string;
   name: string;
-  external_id: string;
+  connected: boolean;
+  last_sync_at: string | null;
+  last_sync_error: string | null;
 }
 
-function BlackboardSection() {
-  const [origin, setOrigin] = useState("https://harvey.utulsa.edu");
-  const [cookie, setCookie] = useState(() => localStorage.getItem("bb-cookie") ?? "");
-  const [courses, setCourses] = useState<BbCourse[] | null>(null);
-  const [selBb, setSelBb] = useState("");
-  const [grades, setGrades] = useState<BbGrade[] | null>(null);
-  const [mapTo, setMapTo] = useState("");
-  const [checked, setChecked] = useState<Set<number>>(new Set());
+interface OlSyncResult {
+  pushed: number;
+  pulled: number;
+  events_removed: number;
+  error: string | null;
+}
+
+function OutlookSection() {
+  const [status, setStatus] = useState<OlStatus | null>(null);
+  const [clientId, setClientId] = useState("");
+  const [devCode, setDevCode] = useState<{
+    device_code: string;
+    user_code: string;
+    verification_uri: string;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null);
-  const { data: plannerCourses } = useData<Course[]>("/api/courses");
+  const [msg, setMsg] = useState<string | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
+  const [syncResult, setSyncResult] = useState<OlSyncResult | null>(null);
 
-  const saveCookie = (v: string) => {
-    setCookie(v);
-    localStorage.setItem("bb-cookie", v);
+  const refreshStatus = () => {
+    if (!isTauri()) return;
+    invoke<OlStatus>("ol_status")
+      .then(setStatus)
+      .catch((e) => console.error("ol_status failed", e));
   };
 
-  const loadCourses = async () => {
+  useEffect(() => {
+    refreshStatus();
+  }, []);
+
+  const tz = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
+  const connect = async () => {
     setBusy(true);
     setErr(null);
-    setDone(null);
+    setMsg(null);
+    setDevCode(null);
     try {
-      const res = await invoke<{ courses: BbCourse[] }>("bb_my_courses", { origin, cookie });
-      setCourses(res.courses);
-      setSelBb(res.courses[0]?.id ?? "");
-      setGrades(null);
+      const res = await invoke<{
+        device_code: string;
+        user_code: string;
+        verification_uri: string;
+      }>("ol_device_code", { clientId: clientId.trim(), tz: tz() });
+      setDevCode(res);
+      setMsg("Waiting for you to sign in…");
+      await poll();
     } catch (e) {
       setErr(String(e));
     } finally {
@@ -441,49 +455,40 @@ function BlackboardSection() {
     }
   };
 
-  const loadGrades = async () => {
-    if (!selBb) return;
-    setBusy(true);
-    setErr(null);
-    setDone(null);
-    try {
-      const res = await invoke<{ grades: BbGrade[] }>("bb_my_grades", {
-        origin,
-        courseId: selBb,
-        cookie,
-      });
-      setGrades(res.grades);
-      setChecked(new Set(res.grades.map((_, i) => i)));
-    } catch (e) {
-      setErr(String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const importGrades = async () => {
-    if (!grades || !mapTo) return;
-    setBusy(true);
-    setErr(null);
-    setDone(null);
-    try {
-      let n = 0;
-      for (const [i, g] of grades.entries()) {
-        if (!checked.has(i)) continue;
-        let gradeText = g.score || "";
-        if (g.possible) gradeText = `${g.score}/${g.possible}`;
-        const graded = g.status.toLowerCase().includes("grad");
-        await api.create("/api/assignments", {
-          title: g.title,
-          kind: "homework",
-          course_id: Number(mapTo),
-          grade: gradeText || null,
-          status: graded ? "graded" : "todo",
-        });
-        n++;
+  const poll = async () => {
+    for (let i = 0; i < 120; i++) {
+      await new Promise((r) => setTimeout(r, 5000));
+      let res: { state: string; message?: string; email?: string; name?: string };
+      try {
+        res = await invoke("ol_poll", { deviceCode: devCode?.device_code });
+      } catch (e) {
+        res = { state: "error", message: String(e) };
       }
-      refreshAll();
-      setDone(`Imported ${n} grade${n === 1 ? "" : "s"} into your class.`);
+      if (res.state === "success") {
+        setMsg(`Connected as ${res.email}.`);
+        setDevCode(null);
+        refreshStatus();
+        void syncNow();
+        return;
+      }
+      if (res.state === "error") {
+        setErr(res.message ?? "Sign-in failed.");
+        setDevCode(null);
+        return;
+      }
+    }
+    setErr("Timed out — start over.");
+    setDevCode(null);
+  };
+
+  const syncNow = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await invoke<OlSyncResult>("ol_sync_now");
+      setSyncResult(res);
+      if (res.error) setErr(res.error);
+      refreshStatus();
     } catch (e) {
       setErr(String(e));
     } finally {
@@ -491,115 +496,122 @@ function BlackboardSection() {
     }
   };
 
-  if (!isTauri()) {
-    return (
-      <Card className="flex items-start gap-3">
-        <span className="text-2xl">🎓</span>
-        <div className="min-w-0 flex-1">
-          <p className="font-medium text-slate-900">Blackboard</p>
-          <p className="text-sm text-slate-500">
-            Sync grades from your Mac. Open the desktop app's Integrations page to connect.
-          </p>
-        </div>
-      </Card>
-    );
-  }
+  const disconnect = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await invoke("ol_disconnect");
+      setStatus({ client_id: "", email: "", name: "", connected: false, last_sync_at: null, last_sync_error: null });
+      setSyncResult(null);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openVerification = () => {
+    if (isTauri()) {
+      void import("@tauri-apps/plugin-opener").then(({ openUrl }) =>
+        openUrl(devCode?.verification_uri ?? "https://microsoft.com/devicelogin"),
+      );
+    } else {
+      window.open(devCode?.verification_uri ?? "https://microsoft.com/devicelogin", "_blank");
+    }
+  };
 
   return (
     <Card className="flex items-start gap-3">
-      <span className="text-2xl">🎓</span>
+      <span className="text-2xl">📧</span>
       <div className="min-w-0 flex-1 space-y-3">
-        <div>
-          <p className="font-medium text-slate-900">Blackboard (Harvey)</p>
-          <p className="text-sm text-slate-500">
-            Your school uses SSO + MFA, so instead of storing your password, sign in normally in
-            your browser and paste your session cookie here. When it expires, just paste a fresh
-            one.
-          </p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="font-medium text-slate-900">Outlook / Microsoft</p>
+          {status?.connected && (
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-600">
+              Connected
+            </span>
+          )}
         </div>
+        <p className="text-sm text-slate-500">
+          Two-way calendar sync through Microsoft Graph. Assignments push to your calendar, and
+          events appear in School Hub.
+        </p>
 
-        <Field label="Blackboard URL">
-          <TextInput value={origin} onChange={setOrigin} placeholder="https://your.school.edu" />
-        </Field>
-        <Field label="Session cookie">
-          <textarea
-            className={"w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 placeholder-slate-400 outline-none focus:border-indigo-500 resize-y"}
-            rows={3}
-            value={cookie}
-            onChange={(e) => saveCookie(e.target.value)}
-            placeholder="e.g. JSESSIONID=ABC123; ... (paste the whole Cookie header)"
-          />
-          <p className="mt-1 text-xs text-slate-400">
-            How to get it: log in to Blackboard in Safari/Chrome, open Developer Tools → Network,
-            click any request, and copy the full "Cookie" request header.
-          </p>
-        </Field>
-
-        {err && <p className="text-xs text-rose-600">{err}</p>}
-        {done && <p className="text-xs text-emerald-600">{done}</p>}
-
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={() => void loadCourses()} disabled={busy || !origin || !cookie}>
-            {busy ? "Loading…" : "Load my courses"}
-          </Button>
-        </div>
-
-        {courses && courses.length > 0 && (
-          <div className="space-y-3 border-t border-slate-100 pt-3">
-            <Field label="Blackboard course">
-              <SelectInput
-                value={selBb}
-                onChange={setSelBb}
-                options={courses.map((c) => ({ value: c.id, label: c.name }))}
-              />
-            </Field>
-            <Button onClick={() => void loadGrades()} disabled={busy || !selBb}>
-              Load grades
-            </Button>
-          </div>
-        )}
-
-        {grades && grades.length > 0 && (
-          <div className="space-y-3 border-t border-slate-100 pt-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              {grades.length} graded items — pick what to import
-            </p>
-            <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
-              {grades.map((g, i) => (
-                <label key={i} className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-slate-50">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 accent-indigo-500"
-                    checked={checked.has(i)}
-                    onChange={() =>
-                      setChecked((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(i)) next.delete(i);
-                        else next.add(i);
-                        return next;
-                      })
-                    }
-                  />
-                  <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{g.title}</span>
-                  <span className="shrink-0 text-sm font-medium text-slate-500">
-                    {g.possible ? `${g.score}/${g.possible}` : g.score}
-                  </span>
-                </label>
-              ))}
+        {status?.connected ? (
+          <div className="space-y-2">
+            <p className="text-sm text-slate-700">{status.name || status.email}</p>
+            {status.last_sync_at && (
+              <p className="text-xs text-slate-500">Last synced {status.last_sync_at}</p>
+            )}
+            {status.last_sync_error && (
+              <p className="text-xs text-rose-600">Last sync failed: {status.last_sync_error}</p>
+            )}
+            {syncResult && (
+              <p className="text-xs text-slate-500">
+                Sync complete — {syncResult.pushed} pushed, {syncResult.pulled} pulled
+                {syncResult.events_removed > 0 ? `, ${syncResult.events_removed} removed` : ""}.
+                {syncResult.error ? ` Error: ${syncResult.error}` : ""}
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => void syncNow()} disabled={busy}>
+                {busy ? "Syncing…" : "Sync now"}
+              </Button>
+              <Button variant="danger" onClick={() => void disconnect()} disabled={busy}>
+                Disconnect
+              </Button>
             </div>
-            <Field label="Import into this class">
-              <SelectInput
-                value={mapTo}
-                onChange={setMapTo}
-                options={[
-                  { value: "", label: "Choose a class…" },
-                  ...(plannerCourses || []).map((c) => ({ value: String(c.id), label: c.name })),
-                ]}
-              />
-            </Field>
-            <Button onClick={() => void importGrades()} disabled={busy || checked.size === 0 || !mapTo}>
-              Import {checked.size} to Homework & Tests
-            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {isTauri() && (
+              <Field label="Application (client) ID">
+                <TextInput
+                  value={clientId}
+                  onChange={setClientId}
+                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                />
+              </Field>
+            )}
+            {isTauri() && !devCode && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button onClick={() => void connect()} disabled={busy || !clientId.trim()}>
+                  {busy ? "Working…" : "Sign in with Microsoft"}
+                </Button>
+                <button
+                  onClick={() => setShowHelp((s) => !s)}
+                  className="text-xs font-medium text-indigo-600 underline"
+                >
+                  How do I get a client ID?
+                </button>
+              </div>
+            )}
+            {showHelp && (
+              <ol className="list-decimal space-y-1 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+                <li>Go to portal.azure.com and sign in with your Microsoft account.</li>
+                <li>Search "App registrations" → New registration.</li>
+                <li>Name: School Hub. Account type: "Any organizational directory and personal Microsoft accounts".</li>
+                <li>Redirect URI: Public client/native (mobile & desktop) → http://localhost. Register.</li>
+                <li>Copy the Application (client) ID and paste it above.</li>
+                <li>Authentication → Advanced settings → Allow public client flows: Yes → Save.</li>
+              </ol>
+            )}
+            {devCode && (
+              <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-medium text-slate-700">
+                  Go to{" "}
+                  <span className="text-indigo-600 underline" onClick={openVerification}>
+                    {devCode.verification_uri}
+                  </span>{" "}
+                  and enter:
+                </p>
+                <code className="block rounded-lg bg-white px-3 py-2 text-center text-xl font-bold tracking-widest text-slate-900">
+                  {devCode.user_code}
+                </code>
+              </div>
+            )}
+            {msg && <p className="text-xs text-slate-600">{msg}</p>}
+            {err && <p className="text-xs text-rose-600">{err}</p>}
           </div>
         )}
       </div>
@@ -636,15 +648,6 @@ export function IntegrationsPage() {
       .then(setQrDataUrl)
       .catch((e) => console.error("qr failed", e));
   }, [phoneUrl, token]);
-
-  const integrations = [
-    {
-      icon: "📧",
-      name: "Outlook / Microsoft",
-      desc: "Two-way calendar sync through the Microsoft Graph API.",
-      status: "Planned",
-    },
-  ];
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -721,21 +724,7 @@ export function IntegrationsPage() {
         </h2>
         <div className="space-y-2">
           <CalendarSection />
-          <BlackboardSection />
-          {integrations.map((i) => (
-            <Card key={i.name} className="flex items-start gap-3">
-              <span className="text-2xl">{i.icon}</span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-medium text-slate-900">{i.name}</p>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-                    {i.status}
-                  </span>
-                </div>
-                <p className="text-sm text-slate-500">{i.desc}</p>
-              </div>
-            </Card>
-          ))}
+          <OutlookSection />
         </div>
       </section>
     </div>
